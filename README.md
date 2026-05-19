@@ -47,12 +47,12 @@ DoubaoVoiceBridge 是一个本地 macOS 菜单栏工具。它把物理右 `Comma
 
 ## 配置说明
 
-配置文件是可选的，不存在就使用默认值。
+配置文件放在项目根目录 `config.json`，不存在就使用默认值。
 
 路径：
 
 ```text
-~/.config/doubao-voice-bridge/config.json
+./config.json
 ```
 
 支持部分覆盖，没写的项会自动沿用默认值。
@@ -100,6 +100,8 @@ chmod +x scripts/build-app.sh
 ./scripts/build-app.sh
 open build/DoubaoVoiceBridge.app
 ```
+
+打包时，`scripts/build-app.sh` 会把同一份 `config.json` 复制进应用包里，所以本地开发和导出的 app 会共用同一个配置。
 
 ## 下载版注意事项
 

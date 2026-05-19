@@ -35,4 +35,33 @@ final class BridgeConfigTests: XCTestCase {
         XCTAssertEqual(config.restoreDelay, 0.35)
         XCTAssertEqual(config.postSwitchSettleDelay, 1.20)
     }
+
+    func testDefaultLocationLoadsConfigFromCurrentDirectory() throws {
+        let fileManager = FileManager.default
+        let originalDirectory = fileManager.currentDirectoryPath
+        let tempDirectory = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fileManager.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+
+        let configURL = tempDirectory.appendingPathComponent("config.json")
+        try """
+        {
+          "targetInputMethod": "Project Doubao",
+          "launchAtLogin": false
+        }
+        """.data(using: .utf8)!.write(to: configURL)
+
+        defer {
+            _ = fileManager.changeCurrentDirectoryPath(originalDirectory)
+            try? fileManager.removeItem(at: tempDirectory)
+        }
+
+        XCTAssertTrue(fileManager.changeCurrentDirectoryPath(tempDirectory.path))
+
+        let config = BridgeConfig.loadFromDefaultLocation()
+
+        XCTAssertEqual(config.targetInputMethod, "Project Doubao")
+        XCTAssertFalse(config.launchAtLogin)
+        XCTAssertEqual(config.userInputMethod, "Squirrel - Simplified")
+    }
 }

@@ -1,0 +1,14 @@
+{
+  "targetInputMethod": "豆包输入法",
+  "userInputMethod": "Squirrel - Simplified",
+  "launchAtLogin": true,
+  "restoreDelay": 0.2,
+  "postSwitchSettleDelay": 1.2,
+  "recentRestoreSettleDelay": 1.5,
+  "switchWaitTimeout": 2.0,
+  "switchPollInterval": 0.05,
+  "focusBounceBackDelay": 0.16,
+  "focusBounceSettleDelay": 0.16,
+  "optionWarmupTapDuration": 0.05,
+  "optionWarmupToHoldDelay": 0.22
+}
