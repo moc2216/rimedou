@@ -48,12 +48,26 @@ public struct BridgeConfig: Equatable, Sendable {
     }
 
     public static func loadFromDefaultLocation() -> BridgeConfig {
-        let url = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/doubao-voice-bridge/config.json")
-        guard let data = try? Data(contentsOf: url) else {
-            return .default
+        for url in candidateConfigURLs() {
+            guard let data = try? Data(contentsOf: url) else {
+                continue
+            }
+            return (try? load(from: data)) ?? .default
         }
-        return (try? load(from: data)) ?? .default
+        return .default
+    }
+
+    private static func candidateConfigURLs() -> [URL] {
+        var urls: [URL] = []
+
+        if let resourceURL = Bundle.main.resourceURL {
+            urls.append(resourceURL.appendingPathComponent("config.json"))
+        }
+
+        urls.append(URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("config.json"))
+
+        return urls
     }
 }
 
