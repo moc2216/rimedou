@@ -7,6 +7,7 @@ import ServiceManagement
 private let rightCommandKeyCode: Int64 = 54
 private let leftOptionKeyCode: CGKeyCode = 58
 private let deviceRightCommandMask: UInt64 = 0x10
+private let doubaoInputMethodName = "豆包输入法"
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let config = BridgeConfig.loadFromDefaultLocation()
@@ -24,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var permissionAlertPending = false
     private var sessionID = UUID()
     private var machine = BridgeStateMachine()
+    private var inputMethodToRestore: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -32,7 +34,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         checkPermissionsAndShowAlertIfNeeded()
         warnIfHammerspoonIsRunning()
         installEventTap()
-        normalizeStartupInputMethod()
         logger.log("app launched")
     }
 
@@ -40,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if optionHoldIsDown {
             optionSender.up()
         }
+        restorePreviousInputMethod()
         disableEventTap()
         logger.log("app terminated")
     }
@@ -76,7 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         logger.log(enabled ? "bridge enabled" : "bridge disabled")
         if !enabled {
             releaseOptionIfNeeded()
-            restoreUserInputMethod()
+            restorePreviousInputMethod()
             machine.handle(.reset)
         }
     }
@@ -299,9 +301,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if actions.contains(.releaseOptionHold) {
             releaseOptionIfNeeded()
         }
-        if actions.contains(.restoreUserInputMethod) {
+        if actions.contains(.restorePreviousInputMethod) {
             DispatchQueue.main.asyncAfter(deadline: .now() + config.restoreDelay) { [weak self] in
-                self?.restoreUserInputMethod()
+                self?.restorePreviousInputMethod()
             }
         }
     }
@@ -312,19 +314,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let originalApp = NSWorkspace.shared.frontmostApplication
         let originalWindow = FocusBouncer.focusedWindow(for: originalApp)
         let currentInput = inputSources.currentInputSourceName()
+        inputMethodToRestore = currentInput
         logger.log("record original input source: \(currentInput)")
-        logger.log("switch to target input source: \(config.targetInputMethod)")
+        logger.log("switch to doubao input source: \(doubaoInputMethodName)")
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            _ = self.inputSources.selectInputSource(namedOrIdentifiedBy: self.config.targetInputMethod)
+            _ = self.inputSources.selectInputSource(namedOrIdentifiedBy: doubaoInputMethodName)
             Thread.sleep(forTimeInterval: self.config.postSwitchSettleDelay)
             let confirmed = self.inputSources.waitUntilActive(
-                matches: self.config.targetInputMethod,
+                matches: doubaoInputMethodName,
                 timeout: self.config.switchWaitTimeout,
                 pollInterval: self.config.switchPollInterval
             )
-            self.logger.log(confirmed ? "confirmed target input source" : "target input source confirmation timed out")
+            self.logger.log(confirmed ? "confirmed doubao input source" : "doubao input source confirmation timed out")
 
             DispatchQueue.main.async {
                 guard self.sessionID == currentSession, self.rightCommandDown else { return }
@@ -369,15 +372,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         logger.log("left option release")
     }
 
-    private func restoreUserInputMethod() {
-        logger.log("restore input method: \(config.userInputMethod)")
-        _ = inputSources.selectInputSource(namedOrIdentifiedBy: config.userInputMethod)
-    }
-
-    private func normalizeStartupInputMethod() {
-        if inputSources.currentInputSourceName().contains(config.targetInputMethod) {
-            restoreUserInputMethod()
+    private func restorePreviousInputMethod() {
+        guard let inputMethod = inputMethodToRestore else {
+            logger.log("skip input method restore: no previous input source recorded")
+            return
         }
+        inputMethodToRestore = nil
+        logger.log("restore previous input method: \(inputMethod)")
+        _ = inputSources.selectInputSource(namedOrIdentifiedBy: inputMethod)
     }
 }
 
