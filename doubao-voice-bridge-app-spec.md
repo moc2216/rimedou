@@ -84,6 +84,7 @@ Optional config file:
 {
   "targetInputMethod": "豆包输入法",
   "userInputMethod": "Squirrel - Simplified",
+  "launchAtLogin": true,
   "restoreDelay": 0.2,
   "postSwitchSettleDelay": 1.2,
   "recentRestoreSettleDelay": 1.5,
@@ -266,4 +267,3 @@ Things that were ruled out:
 Working hypothesis:
 
 Doubao's voice feature depends on macOS text input context activation. Switching TIS input source updates the menu/input source, but does not always cause Doubao's IMK server to bind voice handling to the current text client. App focus bounce forces a detach/attach path similar to manual focus switching.
-
