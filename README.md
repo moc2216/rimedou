@@ -6,7 +6,6 @@ DoubaoVoiceBridge 是一个本地 macOS 菜单栏工具。它把物理右 `Comma
 
 - macOS
 - 需要使用豆包输入法
-- 默认日常输入法建议是 `Squirrel - Simplified`
 - 首次使用要授予两个系统权限：
   - Accessibility
   - Input Monitoring
@@ -32,11 +31,11 @@ DoubaoVoiceBridge 是一个本地 macOS 菜单栏工具。它把物理右 `Comma
 
 ### 3. 开始使用
 
-1. 确认你的正常输入法是 `Squirrel - Simplified`
-2. 确认豆包输入法已安装，并且配置中的名称能匹配到它
+1. 确认豆包输入法已安装
+2. 切到你当前想正常使用的输入法
 3. 在任意可输入文本的地方，按住右 `Command`
 4. 说话结束后松开右 `Command`
-5. 应用会自动切回你的日常输入法
+5. 应用会自动切回按下右 `Command` 前的输入法
 
 菜单栏里可以：
 
@@ -61,12 +60,9 @@ DoubaoVoiceBridge 是一个本地 macOS 菜单栏工具。它把物理右 `Comma
 
 ```json
 {
-  "targetInputMethod": "豆包输入法",
-  "userInputMethod": "Squirrel - Simplified",
   "launchAtLogin": true,
   "restoreDelay": 0.2,
   "postSwitchSettleDelay": 1.2,
-  "recentRestoreSettleDelay": 1.5,
   "switchWaitTimeout": 2.0,
   "switchPollInterval": 0.05,
   "focusBounceBackDelay": 0.16,
@@ -78,12 +74,9 @@ DoubaoVoiceBridge 是一个本地 macOS 菜单栏工具。它把物理右 `Comma
 
 各项含义：
 
-- `targetInputMethod`：按住右 `Command` 时切换到的输入法名称，默认 `豆包输入法`
-- `userInputMethod`：松开后恢复的日常输入法，默认 `Squirrel - Simplified`
 - `launchAtLogin`：是否开机/登录后自动启动，默认 `true`
 - `restoreDelay`：松开右 `Command` 后，延迟多久恢复输入法，默认 `0.2`
 - `postSwitchSettleDelay`：切到豆包后，等待系统稳定的时间，默认 `1.2`
-- `recentRestoreSettleDelay`：刚恢复过输入法后的额外稳定等待，默认 `1.5`
 - `switchWaitTimeout`：等待目标输入法确认成功的超时，默认 `2.0`
 - `switchPollInterval`：轮询当前输入法的间隔，默认 `0.05`
 - `focusBounceBackDelay`：做焦点回弹时，切走后多久切回原应用，默认 `0.16`
@@ -103,29 +96,15 @@ open build/DoubaoVoiceBridge.app
 
 打包时，`scripts/build-app.sh` 会把同一份 `config.json` 复制进应用包里，所以本地开发和导出的 app 会共用同一个配置。
 
+脚本会优先使用 `CODE_SIGN_IDENTITY` 指定的签名身份；未指定时会自动选本机第一个有效的代码签名证书，找不到证书才使用 ad-hoc 签名。反复本地验证时建议使用稳定签名身份，macOS 权限记录更容易沿用。
+
 ## 下载版注意事项
 
 - Release 版和本地编译版都需要重新授权权限
 - 第一次打开如果被 macOS 拦截，去系统设置里允许，或者从 Finder 右键打开一次
-- 如果你的豆包输入法名称和默认值不一致，把 `targetInputMethod` 改成你机器上实际显示的名称
-- 如果你平时的输入法不是 `Squirrel - Simplified`，把 `userInputMethod` 改成你的默认输入法名称
+- 应用运行时只在内存中记录按键前的输入法，不会修改配置文件来保存恢复目标
 - 日志在：
 
 ```text
 ~/Library/Logs/DoubaoVoiceBridge/app.log
 ```
-
-## 发布内容
-
-Release 中建议同时提供：
-
-- `DoubaoVoiceBridge.app`
-- 对应的源码或构建说明
-- 版本变更说明
-
-本次 release 的重点：
-
-- 新增 `launchAtLogin` 配置，默认开启
-- App 启动时会自动同步 macOS 登录项状态
-
-这样下载用户可以直接用，开发者也可以自行复现构建结果。

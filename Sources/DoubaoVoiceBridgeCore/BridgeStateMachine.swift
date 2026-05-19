@@ -17,7 +17,7 @@ public enum BridgeAction: Equatable, Sendable {
     case startVoiceSession
     case cancelPendingOptionHold
     case releaseOptionHold
-    case restoreUserInputMethod
+    case restorePreviousInputMethod
 }
 
 public struct BridgeStateMachine: Sendable {
@@ -38,10 +38,10 @@ public struct BridgeStateMachine: Sendable {
             return []
         case (.preparingVoice, .rightCommandUp):
             state = .idle
-            return [.cancelPendingOptionHold, .restoreUserInputMethod]
+            return [.cancelPendingOptionHold, .restorePreviousInputMethod]
         case (.holdingOption, .rightCommandUp):
             state = .idle
-            return [.releaseOptionHold, .restoreUserInputMethod]
+            return [.releaseOptionHold, .restorePreviousInputMethod]
         case (_, .reset):
             state = .idle
             return []

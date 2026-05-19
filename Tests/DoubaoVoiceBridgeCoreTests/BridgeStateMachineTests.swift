@@ -9,7 +9,7 @@ final class BridgeStateMachineTests: XCTestCase {
         let upActions = machine.handle(.rightCommandUp)
 
         XCTAssertEqual(downActions, [.startVoiceSession])
-        XCTAssertEqual(upActions, [.cancelPendingOptionHold, .restoreUserInputMethod])
+        XCTAssertEqual(upActions, [.cancelPendingOptionHold, .restorePreviousInputMethod])
         XCTAssertEqual(machine.state, .idle)
     }
 
@@ -20,7 +20,7 @@ final class BridgeStateMachineTests: XCTestCase {
         _ = machine.handle(.optionHoldStarted)
         let actions = machine.handle(.rightCommandUp)
 
-        XCTAssertEqual(actions, [.releaseOptionHold, .restoreUserInputMethod])
+        XCTAssertEqual(actions, [.releaseOptionHold, .restorePreviousInputMethod])
         XCTAssertEqual(machine.state, .idle)
     }
 }

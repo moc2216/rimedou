@@ -1,12 +1,9 @@
 import Foundation
 
 public struct BridgeConfig: Equatable, Sendable {
-    public var targetInputMethod: String
-    public var userInputMethod: String
     public var launchAtLogin: Bool
     public var restoreDelay: TimeInterval
     public var postSwitchSettleDelay: TimeInterval
-    public var recentRestoreSettleDelay: TimeInterval
     public var switchWaitTimeout: TimeInterval
     public var switchPollInterval: TimeInterval
     public var focusBounceBackDelay: TimeInterval
@@ -15,12 +12,9 @@ public struct BridgeConfig: Equatable, Sendable {
     public var optionWarmupToHoldDelay: TimeInterval
 
     public static let `default` = BridgeConfig(
-        targetInputMethod: "豆包输入法",
-        userInputMethod: "Squirrel - Simplified",
         launchAtLogin: true,
         restoreDelay: 0.20,
         postSwitchSettleDelay: 1.20,
-        recentRestoreSettleDelay: 1.50,
         switchWaitTimeout: 2.00,
         switchPollInterval: 0.05,
         focusBounceBackDelay: 0.16,
@@ -32,12 +26,9 @@ public struct BridgeConfig: Equatable, Sendable {
     public static func load(from data: Data) throws -> BridgeConfig {
         let partial = try JSONDecoder().decode(PartialBridgeConfig.self, from: data)
         var config = BridgeConfig.default
-        config.targetInputMethod = partial.targetInputMethod ?? config.targetInputMethod
-        config.userInputMethod = partial.userInputMethod ?? config.userInputMethod
         config.launchAtLogin = partial.launchAtLogin ?? config.launchAtLogin
         config.restoreDelay = partial.restoreDelay ?? config.restoreDelay
         config.postSwitchSettleDelay = partial.postSwitchSettleDelay ?? config.postSwitchSettleDelay
-        config.recentRestoreSettleDelay = partial.recentRestoreSettleDelay ?? config.recentRestoreSettleDelay
         config.switchWaitTimeout = partial.switchWaitTimeout ?? config.switchWaitTimeout
         config.switchPollInterval = partial.switchPollInterval ?? config.switchPollInterval
         config.focusBounceBackDelay = partial.focusBounceBackDelay ?? config.focusBounceBackDelay
@@ -72,12 +63,9 @@ public struct BridgeConfig: Equatable, Sendable {
 }
 
 private struct PartialBridgeConfig: Decodable {
-    var targetInputMethod: String?
-    var userInputMethod: String?
     var launchAtLogin: Bool?
     var restoreDelay: TimeInterval?
     var postSwitchSettleDelay: TimeInterval?
-    var recentRestoreSettleDelay: TimeInterval?
     var switchWaitTimeout: TimeInterval?
     var switchPollInterval: TimeInterval?
     var focusBounceBackDelay: TimeInterval?
