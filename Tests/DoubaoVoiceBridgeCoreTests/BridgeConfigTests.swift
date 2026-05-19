@@ -5,12 +5,12 @@ final class BridgeConfigTests: XCTestCase {
     func testDefaultConfigMatchesProjectTimingSpec() {
         let config = BridgeConfig.default
 
-        XCTAssertEqual(config.targetInputMethod, "豆包输入法")
-        XCTAssertEqual(config.userInputMethod, "Squirrel - Simplified")
+        let configurableFields = Set(Mirror(reflecting: config).children.compactMap(\.label))
+        XCTAssertFalse(configurableFields.contains("targetInputMethod"))
+        XCTAssertFalse(configurableFields.contains("userInputMethod"))
         XCTAssertTrue(config.launchAtLogin)
         XCTAssertEqual(config.restoreDelay, 0.20)
         XCTAssertEqual(config.postSwitchSettleDelay, 1.20)
-        XCTAssertEqual(config.recentRestoreSettleDelay, 1.50)
         XCTAssertEqual(config.switchWaitTimeout, 2.00)
         XCTAssertEqual(config.focusBounceBackDelay, 0.16)
         XCTAssertEqual(config.focusBounceSettleDelay, 0.16)
@@ -21,7 +21,6 @@ final class BridgeConfigTests: XCTestCase {
     func testPartialJSONConfigKeepsDefaultsForMissingValues() throws {
         let data = """
         {
-          "targetInputMethod": "Custom Doubao",
           "launchAtLogin": false,
           "restoreDelay": 0.35
         }
@@ -29,8 +28,6 @@ final class BridgeConfigTests: XCTestCase {
 
         let config = try BridgeConfig.load(from: data)
 
-        XCTAssertEqual(config.targetInputMethod, "Custom Doubao")
-        XCTAssertEqual(config.userInputMethod, "Squirrel - Simplified")
         XCTAssertFalse(config.launchAtLogin)
         XCTAssertEqual(config.restoreDelay, 0.35)
         XCTAssertEqual(config.postSwitchSettleDelay, 1.20)
@@ -46,7 +43,6 @@ final class BridgeConfigTests: XCTestCase {
         let configURL = tempDirectory.appendingPathComponent("config.json")
         try """
         {
-          "targetInputMethod": "Project Doubao",
           "launchAtLogin": false
         }
         """.data(using: .utf8)!.write(to: configURL)
@@ -60,8 +56,6 @@ final class BridgeConfigTests: XCTestCase {
 
         let config = BridgeConfig.loadFromDefaultLocation()
 
-        XCTAssertEqual(config.targetInputMethod, "Project Doubao")
         XCTAssertFalse(config.launchAtLogin)
-        XCTAssertEqual(config.userInputMethod, "Squirrel - Simplified")
     }
 }

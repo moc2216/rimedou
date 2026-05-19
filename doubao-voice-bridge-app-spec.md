@@ -2,7 +2,7 @@
 
 ## Goal
 
-Build a tiny local-only macOS background/menu bar app that lets the user keep their normal input method as Squirrel, while using Doubao IME only for voice input.
+Build a tiny local-only macOS background/menu bar app that lets the user keep their current input method, while using Doubao IME only for voice input.
 
 The app replaces the current Hammerspoon script. It should not depend on Hammerspoon.
 
@@ -10,22 +10,22 @@ The app replaces the current Hammerspoon script. It should not depend on Hammers
 
 Default state:
 
-- The user's normal input method is `Squirrel - Simplified`.
-- The system should return to Squirrel after every voice session.
+- The user's normal input method can be any input source.
+- The system should return to the input source that was active before each voice session.
 - Doubao should not remain the normal typing input method.
 
 Trigger:
 
 - Physical Right Command key is used as push-to-talk.
 - On Right Command down:
-  1. Record current typing input source, normalized to Squirrel if uncertain.
+  1. Record current typing input source in memory for this session.
   2. Switch input method to `豆包输入法`.
   3. Wait until the active input method is confirmed as Doubao.
   4. Perform an app focus bounce to force macOS InputMethodKit/AppKit to rebind the current text input context.
   5. Send Doubao's voice shortcut: left Option warmup tap, then hold left Option.
 - On Right Command up:
   1. Release synthetic left Option.
-  2. After about `0.20s`, restore `Squirrel - Simplified`.
+  2. After about `0.20s`, restore the input source recorded on Right Command down.
 
 Critical discovery:
 
@@ -42,8 +42,6 @@ This suggests the real issue is not keyboard delivery, Bluetooth, or input-sourc
 
 ```text
 TARGET_INPUT_SOURCE = "豆包输入法"
-USER_INPUT_SOURCE_KIND = "method"
-USER_INPUT_SOURCE_VALUE = "Squirrel - Simplified"
 
 RIGHT_CMD_KEYCODE = 54
 LEFT_OPTION_KEYCODE = 58 // kVK_Option
@@ -52,8 +50,6 @@ OPTION_PRESS_DELAY = 0.08
 OPTION_WARMUP_TAP_DURATION = 0.05
 OPTION_WARMUP_TO_HOLD_DELAY = 0.22
 POST_SWITCH_SETTLE_DELAY = 1.20
-RECENT_RESTORE_WINDOW = 3.00
-RECENT_RESTORE_SETTLE_DELAY = 1.50
 SWITCH_WAIT_TIMEOUT = 2.00
 SWITCH_POLL_INTERVAL = 0.05
 RESTORE_IME_DELAY = 0.20
@@ -82,12 +78,9 @@ Optional config file:
 
 ```json
 {
-  "targetInputMethod": "豆包输入法",
-  "userInputMethod": "Squirrel - Simplified",
   "launchAtLogin": true,
   "restoreDelay": 0.2,
   "postSwitchSettleDelay": 1.2,
-  "recentRestoreSettleDelay": 1.5,
   "focusBounceBackDelay": 0.16,
   "focusBounceSettleDelay": 0.16,
   "optionWarmupTapDuration": 0.05,
@@ -168,7 +161,7 @@ waitingForDoubao
 focusBouncing
 warmingOption
 holdingOption
-restoringSquirrel
+restoringPreviousInputMethod
 ```
 
 On Right Command down:
@@ -188,15 +181,15 @@ On Right Command up:
 ```text
 holdingOption
  -> release left Option
- -> restoringSquirrel after 0.20s
+ -> restoringPreviousInputMethod after 0.20s
  -> idle
 ```
 
 Important:
 
 - Do not use "keep Doubao active while idle" as final behavior.
-- The final desired behavior is Squirrel as default, Doubao only during voice.
-- Always run focus bounce after a real Squirrel-to-Doubao switch before triggering left Option.
+- The final desired behavior is to restore whichever input source was active before the voice session.
+- Always run focus bounce after switching to Doubao before triggering left Option.
 
 ## Edge Cases
 
@@ -211,48 +204,49 @@ Short press:
 
 Already in Doubao:
 
-- Normalize previous input source to Squirrel unless there is a trusted previous source.
-- For local user behavior, restoring to Squirrel is preferred.
+- Record Doubao as the previous input source for that session.
+- Releasing Right Command restores the recorded source, which is a no-op in this case.
 
 Reload/relaunch:
 
-- If the app starts while current input method is Doubao, treat Squirrel as the real default user input method.
+- Do not infer or persist a default input source across launches.
+- The app only restores a source recorded during the current in-memory key session.
 
 ## Verification Plan
 
-Test 1: First invocation
+Test 1: First invocation from a non-Doubao input method
 
-1. Ensure current input method is Squirrel.
+1. Ensure current input method is a normal typing input source.
 2. Hold Right Command.
 3. App switches to Doubao.
 4. App focus bounce runs.
 5. Doubao voice starts.
 6. Release Right Command.
-7. App restores Squirrel after `0.20s`.
+7. App restores the original input source after `0.20s`.
 
 Test 2: Second invocation
 
-1. After Test 1, type normally in Squirrel.
+1. After Test 1, type normally in the restored input source.
 2. Hold Right Command again.
 3. App switches to Doubao again.
 4. App focus bounce runs again.
 5. Doubao voice starts again.
-6. Release restores Squirrel.
+6. Release restores the second session's original input source.
 
 Expected logs:
 
 ```text
 right command down
-record original input source: Squirrel - Simplified
-switch to target input source: 豆包输入法
-confirmed target input source
+record original input source: <previous input source>
+switch to doubao input source: 豆包输入法
+confirmed doubao input source
 start app focus bounce
 returned to original app/window
 left option warmup down/up
 left option formal hold down
 right command up
 left option release
-restore input method: Squirrel - Simplified
+restore previous input method: <previous input source>
 ```
 
 ## Notes From Debugging
