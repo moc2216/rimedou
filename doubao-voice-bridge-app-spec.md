@@ -98,7 +98,7 @@ Optional config file:
 Path suggestion:
 
 ```text
-~/.config/doubao-voice-bridge/config.json
+./config.json
 ~/Library/Logs/DoubaoVoiceBridge/app.log
 ```
 
