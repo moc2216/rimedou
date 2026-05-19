@@ -7,6 +7,7 @@ final class BridgeConfigTests: XCTestCase {
 
         XCTAssertEqual(config.targetInputMethod, "豆包输入法")
         XCTAssertEqual(config.userInputMethod, "Squirrel - Simplified")
+        XCTAssertTrue(config.launchAtLogin)
         XCTAssertEqual(config.restoreDelay, 0.20)
         XCTAssertEqual(config.postSwitchSettleDelay, 1.20)
         XCTAssertEqual(config.recentRestoreSettleDelay, 1.50)
@@ -21,6 +22,7 @@ final class BridgeConfigTests: XCTestCase {
         let data = """
         {
           "targetInputMethod": "Custom Doubao",
+          "launchAtLogin": false,
           "restoreDelay": 0.35
         }
         """.data(using: .utf8)!
@@ -29,6 +31,7 @@ final class BridgeConfigTests: XCTestCase {
 
         XCTAssertEqual(config.targetInputMethod, "Custom Doubao")
         XCTAssertEqual(config.userInputMethod, "Squirrel - Simplified")
+        XCTAssertFalse(config.launchAtLogin)
         XCTAssertEqual(config.restoreDelay, 0.35)
         XCTAssertEqual(config.postSwitchSettleDelay, 1.20)
     }
