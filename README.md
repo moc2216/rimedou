@@ -63,6 +63,7 @@ DoubaoVoiceBridge 是一个本地 macOS 菜单栏工具。它把物理右 `Comma
 {
   "targetInputMethod": "豆包输入法",
   "userInputMethod": "Squirrel - Simplified",
+  "launchAtLogin": true,
   "restoreDelay": 0.2,
   "postSwitchSettleDelay": 1.2,
   "recentRestoreSettleDelay": 1.5,
@@ -79,6 +80,7 @@ DoubaoVoiceBridge 是一个本地 macOS 菜单栏工具。它把物理右 `Comma
 
 - `targetInputMethod`：按住右 `Command` 时切换到的输入法名称，默认 `豆包输入法`
 - `userInputMethod`：松开后恢复的日常输入法，默认 `Squirrel - Simplified`
+- `launchAtLogin`：是否开机/登录后自动启动，默认 `true`
 - `restoreDelay`：松开右 `Command` 后，延迟多久恢复输入法，默认 `0.2`
 - `postSwitchSettleDelay`：切到豆包后，等待系统稳定的时间，默认 `1.2`
 - `recentRestoreSettleDelay`：刚恢复过输入法后的额外稳定等待，默认 `1.5`
@@ -118,5 +120,10 @@ Release 中建议同时提供：
 - `DoubaoVoiceBridge.app`
 - 对应的源码或构建说明
 - 版本变更说明
+
+本次 release 的重点：
+
+- 新增 `launchAtLogin` 配置，默认开启
+- App 启动时会自动同步 macOS 登录项状态
 
 这样下载用户可以直接用，开发者也可以自行复现构建结果。

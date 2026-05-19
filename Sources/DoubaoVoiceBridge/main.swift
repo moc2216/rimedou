@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import Carbon
 import DoubaoVoiceBridgeCore
+import ServiceManagement
 
 private let rightCommandKeyCode: Int64 = 54
 private let leftOptionKeyCode: CGKeyCode = 58
@@ -27,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         installMenu()
+        syncLaunchAtLogin()
         checkPermissionsAndShowAlertIfNeeded()
         warnIfHammerspoonIsRunning()
         installEventTap()
@@ -81,6 +83,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openLog() {
         NSWorkspace.shared.open(AppLogger.defaultLogURL)
+    }
+
+    private func syncLaunchAtLogin() {
+        guard #available(macOS 13.0, *) else {
+            return
+        }
+
+        let service = SMAppService.mainApp
+        do {
+            if config.launchAtLogin {
+                if service.status != .enabled {
+                    try service.register()
+                    logger.log("launch at login enabled")
+                }
+            } else if service.status != .notRegistered {
+                try service.unregister()
+                logger.log("launch at login disabled")
+            }
+        } catch {
+            logger.log("failed to sync launch at login: \(error)")
+        }
     }
 
     @objc private func checkPermissionsFromMenu() {

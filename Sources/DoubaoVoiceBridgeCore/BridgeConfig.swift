@@ -3,6 +3,7 @@ import Foundation
 public struct BridgeConfig: Equatable, Sendable {
     public var targetInputMethod: String
     public var userInputMethod: String
+    public var launchAtLogin: Bool
     public var restoreDelay: TimeInterval
     public var postSwitchSettleDelay: TimeInterval
     public var recentRestoreSettleDelay: TimeInterval
@@ -16,6 +17,7 @@ public struct BridgeConfig: Equatable, Sendable {
     public static let `default` = BridgeConfig(
         targetInputMethod: "豆包输入法",
         userInputMethod: "Squirrel - Simplified",
+        launchAtLogin: true,
         restoreDelay: 0.20,
         postSwitchSettleDelay: 1.20,
         recentRestoreSettleDelay: 1.50,
@@ -32,6 +34,7 @@ public struct BridgeConfig: Equatable, Sendable {
         var config = BridgeConfig.default
         config.targetInputMethod = partial.targetInputMethod ?? config.targetInputMethod
         config.userInputMethod = partial.userInputMethod ?? config.userInputMethod
+        config.launchAtLogin = partial.launchAtLogin ?? config.launchAtLogin
         config.restoreDelay = partial.restoreDelay ?? config.restoreDelay
         config.postSwitchSettleDelay = partial.postSwitchSettleDelay ?? config.postSwitchSettleDelay
         config.recentRestoreSettleDelay = partial.recentRestoreSettleDelay ?? config.recentRestoreSettleDelay
@@ -57,6 +60,7 @@ public struct BridgeConfig: Equatable, Sendable {
 private struct PartialBridgeConfig: Decodable {
     var targetInputMethod: String?
     var userInputMethod: String?
+    var launchAtLogin: Bool?
     var restoreDelay: TimeInterval?
     var postSwitchSettleDelay: TimeInterval?
     var recentRestoreSettleDelay: TimeInterval?
