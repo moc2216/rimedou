@@ -1,4 +1,8 @@
-# DoubaoVoiceBridge
+<p align="center">
+  <img src="Sources/assets/appicon.png" alt="DoubaoVoiceBridge icon" width="128" height="128">
+</p>
+
+<h1 align="center">DoubaoVoiceBridge</h1>
 
 DoubaoVoiceBridge 是一个本地 macOS 菜单栏工具。它把物理右 `Command` 键做成按住说话的开关：平时保留你习惯的输入法，按住右 `Command` 时切到豆包输入法进行语音输入，松开后自动恢复回日常输入法。
 
