@@ -1,5 +1,5 @@
 {
-  "launchAtLogin": true,
+  "launchAtLogin": false,
   "restoreDelay": 0.2,
   "postSwitchSettleDelay": 1.2,
   "switchWaitTimeout": 2.0,
