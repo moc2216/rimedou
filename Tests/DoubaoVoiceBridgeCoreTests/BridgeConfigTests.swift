@@ -8,7 +8,7 @@ final class BridgeConfigTests: XCTestCase {
         let configurableFields = Set(Mirror(reflecting: config).children.compactMap(\.label))
         XCTAssertFalse(configurableFields.contains("targetInputMethod"))
         XCTAssertFalse(configurableFields.contains("userInputMethod"))
-        XCTAssertTrue(config.launchAtLogin)
+        XCTAssertFalse(config.launchAtLogin)
         XCTAssertEqual(config.restoreDelay, 0.20)
         XCTAssertEqual(config.postSwitchSettleDelay, 1.20)
         XCTAssertEqual(config.switchWaitTimeout, 2.00)
@@ -33,29 +33,91 @@ final class BridgeConfigTests: XCTestCase {
         XCTAssertEqual(config.postSwitchSettleDelay, 1.20)
     }
 
-    func testDefaultLocationLoadsConfigFromCurrentDirectory() throws {
+    func testDefaultLocationCreatesUserConfigFromProjectTemplateWhenMissing() throws {
         let fileManager = FileManager.default
-        let originalDirectory = fileManager.currentDirectoryPath
         let tempDirectory = fileManager.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try fileManager.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
 
-        let configURL = tempDirectory.appendingPathComponent("config.json")
+        let userConfigURL = tempDirectory
+            .appendingPathComponent("Application Support/DoubaoVoiceBridge/config.json")
+        let templateURL = tempDirectory.appendingPathComponent("template-config.json")
         try """
         {
-          "launchAtLogin": false
+          "launchAtLogin": false,
+          "restoreDelay": 0.45
         }
-        """.data(using: .utf8)!.write(to: configURL)
+        """.data(using: .utf8)!.write(to: templateURL)
 
         defer {
-            _ = fileManager.changeCurrentDirectoryPath(originalDirectory)
             try? fileManager.removeItem(at: tempDirectory)
         }
 
-        XCTAssertTrue(fileManager.changeCurrentDirectoryPath(tempDirectory.path))
+        let config = BridgeConfig.loadFromDefaultLocation(
+            userConfigURL: userConfigURL,
+            templateURLs: [templateURL]
+        )
 
-        let config = BridgeConfig.loadFromDefaultLocation()
+        XCTAssertEqual(config.restoreDelay, 0.45)
+        XCTAssertTrue(fileManager.fileExists(atPath: userConfigURL.path))
+    }
+
+    func testDefaultLocationPrefersExistingUserConfigOverTemplate() throws {
+        let fileManager = FileManager.default
+        let tempDirectory = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fileManager.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+
+        let userConfigURL = tempDirectory
+            .appendingPathComponent("Application Support/DoubaoVoiceBridge/config.json")
+        let templateURL = tempDirectory.appendingPathComponent("template-config.json")
+        try fileManager.createDirectory(
+            at: userConfigURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        {
+          "restoreDelay": 0.31
+        }
+        """.data(using: .utf8)!.write(to: userConfigURL)
+        try """
+        {
+          "restoreDelay": 0.90
+        }
+        """.data(using: .utf8)!.write(to: templateURL)
+
+        defer {
+            try? fileManager.removeItem(at: tempDirectory)
+        }
+
+        let config = BridgeConfig.loadFromDefaultLocation(
+            userConfigURL: userConfigURL,
+            templateURLs: [templateURL]
+        )
+
+        XCTAssertEqual(config.restoreDelay, 0.31)
+    }
+
+    func testDefaultLocationWritesBuiltInConfigWhenNoTemplateExists() throws {
+        let fileManager = FileManager.default
+        let tempDirectory = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fileManager.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+
+        let userConfigURL = tempDirectory
+            .appendingPathComponent("Application Support/DoubaoVoiceBridge/config.json")
+
+        defer {
+            try? fileManager.removeItem(at: tempDirectory)
+        }
+
+        let config = BridgeConfig.loadFromDefaultLocation(
+            userConfigURL: userConfigURL,
+            templateURLs: []
+        )
 
         XCTAssertFalse(config.launchAtLogin)
+        XCTAssertEqual(config.restoreDelay, BridgeConfig.default.restoreDelay)
+        XCTAssertTrue(fileManager.fileExists(atPath: userConfigURL.path))
     }
 }
