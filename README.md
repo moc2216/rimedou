@@ -39,19 +39,19 @@ DoubaoVoiceBridge 是一个本地 macOS 菜单栏工具。它把物理右 `Comma
 
 菜单栏里可以：
 
-- `Disable` / `Enable`：临时停用或启用桥接
+- `Disable Key Capture` / `Enable Key Capture`：临时停用或启用右 `Command` 接管，应用和守护仍保持运行
 - `Open Log`：打开日志
 - `Check Permissions`：重新检查权限
-- `Quit`：退出应用
+- `Quit and Disable Auto Restart`：退出应用，并关闭 LaunchAgent 自动重启
 
 ## 配置说明
 
-配置文件放在项目根目录 `config.json`，不存在就使用默认值。
+用户配置文件放在当前用户的 Application Support 目录。首次启动时，如果用户配置不存在，应用会自动创建一份。
 
 路径：
 
 ```text
-./config.json
+~/Library/Application Support/DoubaoVoiceBridge/config.json
 ```
 
 支持部分覆盖，没写的项会自动沿用默认值。
@@ -60,7 +60,7 @@ DoubaoVoiceBridge 是一个本地 macOS 菜单栏工具。它把物理右 `Comma
 
 ```json
 {
-  "launchAtLogin": true,
+  "launchAtLogin": false,
   "restoreDelay": 0.2,
   "postSwitchSettleDelay": 1.2,
   "switchWaitTimeout": 2.0,
@@ -74,7 +74,7 @@ DoubaoVoiceBridge 是一个本地 macOS 菜单栏工具。它把物理右 `Comma
 
 各项含义：
 
-- `launchAtLogin`：是否开机/登录后自动启动，默认 `true`
+- `launchAtLogin`：旧版 Login Item 配置保留项，当前版本不再使用；应用会自动使用 LaunchAgent 守护运行
 - `restoreDelay`：松开右 `Command` 后，延迟多久恢复输入法，默认 `0.2`
 - `postSwitchSettleDelay`：切到豆包后，等待系统稳定的时间，默认 `1.2`
 - `switchWaitTimeout`：等待目标输入法确认成功的超时，默认 `2.0`
@@ -94,9 +94,50 @@ chmod +x scripts/build-app.sh
 open build/DoubaoVoiceBridge.app
 ```
 
-打包时，`scripts/build-app.sh` 会把同一份 `config.json` 复制进应用包里，所以本地开发和导出的 app 会共用同一个配置。
+项目根目录的 `config.json` 是默认模板。打包时，`scripts/build-app.sh` 会把这份模板复制进应用包；用户第一次运行 app 时，再从模板生成自己的用户配置。后续维护请改用户目录里的配置文件，不要改 `/Applications/DoubaoVoiceBridge.app` 包内文件。
 
 脚本会优先使用 `CODE_SIGN_IDENTITY` 指定的签名身份；未指定时会自动选本机第一个有效的代码签名证书，找不到证书才使用 ad-hoc 签名。反复本地验证时建议使用稳定签名身份，macOS 权限记录更容易沿用。
+
+## LaunchAgent 守护运行
+
+应用首次启动时会自动安装用户级 LaunchAgent。用户直接双击 `DoubaoVoiceBridge.app` 后，应用会把当前 app 包内的可执行文件注册到：
+
+```text
+~/Library/LaunchAgents/local.doubao-voice-bridge.keepalive.plist
+```
+
+这个 LaunchAgent 使用 `RunAtLoad` 和 `KeepAlive`，由 `launchd` 在当前用户的 Aqua 图形会话中托管应用：
+
+```text
+DoubaoVoiceBridge.app/Contents/MacOS/DoubaoVoiceBridge
+```
+
+如果应用被移动到新的目录，下次手动打开新的 app 时会自动更新 LaunchAgent 指向的新路径。
+
+菜单里的 `Quit and Disable Auto Restart` 会卸载 LaunchAgent 并退出应用。之后再次手动打开应用时，会重新安装并启用 LaunchAgent。
+
+菜单里的 `Disable Key Capture` 只暂停右 `Command` 接管，不会退出应用，也不会关闭 LaunchAgent。这个开关适合临时不想让应用接管按键时使用。
+
+开发时也可以用脚本查看或手动调整 LaunchAgent：
+
+查看状态：
+
+```bash
+./scripts/launch-agent-status.sh
+```
+
+卸载：
+
+```bash
+./scripts/uninstall-launch-agent.sh
+```
+
+LaunchAgent 的标准输出和错误日志在：
+
+```text
+~/Library/Logs/DoubaoVoiceBridge/launch-agent.out.log
+~/Library/Logs/DoubaoVoiceBridge/launch-agent.err.log
+```
 
 ## 下载版注意事项
 
