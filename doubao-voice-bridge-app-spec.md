@@ -4,8 +4,6 @@
 
 Build a tiny local-only macOS background/menu bar app that lets the user keep their current input method, while using Doubao IME only for voice input.
 
-The app replaces the current Hammerspoon script. It should not depend on Hammerspoon.
-
 ## Final Verified Behavior
 
 Default state:
@@ -78,9 +76,11 @@ Optional config file:
 
 ```json
 {
-  "launchAtLogin": true,
+  "launchAtLogin": false,
   "restoreDelay": 0.2,
   "postSwitchSettleDelay": 1.2,
+  "switchWaitTimeout": 2.0,
+  "switchPollInterval": 0.05,
   "focusBounceBackDelay": 0.16,
   "focusBounceSettleDelay": 0.16,
   "optionWarmupTapDuration": 0.05,
@@ -91,9 +91,11 @@ Optional config file:
 Path suggestion:
 
 ```text
-./config.json
+~/Library/Application Support/DoubaoVoiceBridge/config.json
 ~/Library/Logs/DoubaoVoiceBridge/app.log
 ```
+
+The project-root `config.json` is a template. Build scripts may copy it into the app bundle, but the installed app should create and read the long-lived user config from Application Support.
 
 ## Required macOS Permissions
 

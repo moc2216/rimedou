@@ -12,7 +12,7 @@ public struct BridgeConfig: Equatable, Sendable {
     public var optionWarmupToHoldDelay: TimeInterval
 
     public static let `default` = BridgeConfig(
-        launchAtLogin: true,
+        launchAtLogin: false,
         restoreDelay: 0.20,
         postSwitchSettleDelay: 1.20,
         switchWaitTimeout: 2.00,
@@ -39,16 +39,44 @@ public struct BridgeConfig: Equatable, Sendable {
     }
 
     public static func loadFromDefaultLocation() -> BridgeConfig {
-        for url in candidateConfigURLs() {
-            guard let data = try? Data(contentsOf: url) else {
-                continue
-            }
-            return (try? load(from: data)) ?? .default
-        }
-        return .default
+        loadFromDefaultLocation(
+            userConfigURL: defaultUserConfigURL,
+            templateURLs: candidateTemplateConfigURLs()
+        )
     }
 
-    private static func candidateConfigURLs() -> [URL] {
+    public static func loadFromDefaultLocation(
+        userConfigURL: URL,
+        templateURLs: [URL],
+        fileManager: FileManager = .default
+    ) -> BridgeConfig {
+        ensureUserConfigExists(
+            at: userConfigURL,
+            templateURLs: templateURLs,
+            fileManager: fileManager
+        )
+
+        guard let data = try? Data(contentsOf: userConfigURL) else {
+            return .default
+        }
+        return (try? load(from: data)) ?? .default
+    }
+
+    public static var defaultUserConfigURL: URL {
+        let applicationSupportURL = (try? FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        )) ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support", isDirectory: true)
+
+        return applicationSupportURL
+            .appendingPathComponent("DoubaoVoiceBridge", isDirectory: true)
+            .appendingPathComponent("config.json")
+    }
+
+    private static func candidateTemplateConfigURLs() -> [URL] {
         var urls: [URL] = []
 
         if let resourceURL = Bundle.main.resourceURL {
@@ -59,6 +87,54 @@ public struct BridgeConfig: Equatable, Sendable {
             .appendingPathComponent("config.json"))
 
         return urls
+    }
+
+    private static func ensureUserConfigExists(
+        at url: URL,
+        templateURLs: [URL],
+        fileManager: FileManager
+    ) {
+        guard !fileManager.fileExists(atPath: url.path) else {
+            return
+        }
+
+        do {
+            try fileManager.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let data = firstValidTemplateData(from: templateURLs) ?? defaultConfigData
+            try data.write(to: url, options: .atomic)
+        } catch {
+            return
+        }
+    }
+
+    private static func firstValidTemplateData(from urls: [URL]) -> Data? {
+        for url in urls {
+            guard let data = try? Data(contentsOf: url),
+                  (try? load(from: data)) != nil else {
+                continue
+            }
+            return data
+        }
+        return nil
+    }
+
+    private static var defaultConfigData: Data {
+        """
+        {
+          "launchAtLogin": false,
+          "restoreDelay": 0.2,
+          "postSwitchSettleDelay": 1.2,
+          "switchWaitTimeout": 2.0,
+          "switchPollInterval": 0.05,
+          "focusBounceBackDelay": 0.16,
+          "focusBounceSettleDelay": 0.16,
+          "optionWarmupTapDuration": 0.05,
+          "optionWarmupToHoldDelay": 0.22
+        }
+        """.data(using: .utf8)!
     }
 }
 
