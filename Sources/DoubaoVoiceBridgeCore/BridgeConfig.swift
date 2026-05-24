@@ -1,5 +1,113 @@
 import Foundation
 
+public enum BridgeKey: Equatable, Hashable, Sendable {
+    case leftShift
+    case rightShift
+    case shift
+    case leftControl
+    case rightControl
+    case control
+    case leftOption
+    case rightOption
+    case option
+    case leftCommand
+    case rightCommand
+    case command
+    case tab
+    case space
+    case character(String)
+
+    public var isModifier: Bool {
+        switch self {
+        case .leftShift, .rightShift, .shift,
+             .leftControl, .rightControl, .control,
+             .leftOption, .rightOption, .option,
+             .leftCommand, .rightCommand, .command:
+            return true
+        case .tab, .space, .character:
+            return false
+        }
+    }
+}
+
+public struct BridgeHotkey: Equatable, Sendable {
+    public var keys: [BridgeKey]
+
+    public init(keys: [BridgeKey]) {
+        self.keys = keys
+    }
+
+    public func contains(_ key: BridgeKey) -> Bool {
+        keys.contains(key)
+    }
+
+    public static func parse(_ value: String) -> BridgeHotkey? {
+        let keys = value
+            .split(separator: "+", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .map(parseKey)
+
+        guard !keys.isEmpty, keys.allSatisfy({ $0 != nil }) else {
+            return nil
+        }
+        return BridgeHotkey(keys: keys.compactMap { $0 })
+    }
+
+    private static func parseKey(_ value: String) -> BridgeKey? {
+        let normalized = value
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "_", with: "")
+            .lowercased()
+
+        switch normalized {
+        case "leftshift", "lshift":
+            return .leftShift
+        case "rightshift", "rshift":
+            return .rightShift
+        case "shift":
+            return .shift
+        case "leftcontrol", "lcontrol", "leftctrl", "lctrl":
+            return .leftControl
+        case "rightcontrol", "rcontrol", "rightctrl", "rctrl":
+            return .rightControl
+        case "control", "ctrl":
+            return .control
+        case "leftoption", "loption", "leftalt", "lalt":
+            return .leftOption
+        case "rightoption", "roption", "rightalt", "ralt":
+            return .rightOption
+        case "option", "alt":
+            return .option
+        case "leftcommand", "lcommand", "leftcmd", "lcmd":
+            return .leftCommand
+        case "rightcommand", "rcommand", "rightcmd", "rcmd":
+            return .rightCommand
+        case "command", "cmd":
+            return .command
+        case "tab":
+            return .tab
+        case "space":
+            return .space
+        default:
+            return parseCharacterKey(value)
+        }
+    }
+
+    private static func parseCharacterKey(_ value: String) -> BridgeKey? {
+        let lowercased = value.lowercased()
+        guard lowercased.count == 1, let scalar = lowercased.unicodeScalars.first else {
+            return nil
+        }
+
+        let accepted = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789`-=[]\\;',./")
+        guard accepted.contains(scalar) else {
+            return nil
+        }
+        return .character(lowercased)
+    }
+}
+
 public struct BridgeConfig: Equatable, Sendable {
     public var launchAtLogin: Bool
     public var restoreDelay: TimeInterval
@@ -10,17 +118,21 @@ public struct BridgeConfig: Equatable, Sendable {
     public var focusBounceSettleDelay: TimeInterval
     public var optionWarmupTapDuration: TimeInterval
     public var optionWarmupToHoldDelay: TimeInterval
+    public var triggerHotkey: BridgeHotkey
+    public var voiceHotkey: BridgeHotkey
 
     public static let `default` = BridgeConfig(
         launchAtLogin: false,
         restoreDelay: 0.20,
-        postSwitchSettleDelay: 1.20,
+        postSwitchSettleDelay: 0.50,
         switchWaitTimeout: 2.00,
         switchPollInterval: 0.05,
         focusBounceBackDelay: 0.16,
         focusBounceSettleDelay: 0.16,
         optionWarmupTapDuration: 0.05,
-        optionWarmupToHoldDelay: 0.22
+        optionWarmupToHoldDelay: 0.22,
+        triggerHotkey: BridgeHotkey(keys: [.rightCommand]),
+        voiceHotkey: BridgeHotkey(keys: [.leftOption])
     )
 
     public static func load(from data: Data) throws -> BridgeConfig {
@@ -35,6 +147,8 @@ public struct BridgeConfig: Equatable, Sendable {
         config.focusBounceSettleDelay = partial.focusBounceSettleDelay ?? config.focusBounceSettleDelay
         config.optionWarmupTapDuration = partial.optionWarmupTapDuration ?? config.optionWarmupTapDuration
         config.optionWarmupToHoldDelay = partial.optionWarmupToHoldDelay ?? config.optionWarmupToHoldDelay
+        config.triggerHotkey = partial.triggerHotkey.flatMap(BridgeHotkey.parse) ?? config.triggerHotkey
+        config.voiceHotkey = partial.voiceHotkey.flatMap(BridgeHotkey.parse) ?? config.voiceHotkey
         return config
     }
 
@@ -126,13 +240,15 @@ public struct BridgeConfig: Equatable, Sendable {
         {
           "launchAtLogin": false,
           "restoreDelay": 0.2,
-          "postSwitchSettleDelay": 1.2,
+          "postSwitchSettleDelay": 0.5,
           "switchWaitTimeout": 2.0,
           "switchPollInterval": 0.05,
           "focusBounceBackDelay": 0.16,
           "focusBounceSettleDelay": 0.16,
           "optionWarmupTapDuration": 0.05,
-          "optionWarmupToHoldDelay": 0.22
+          "optionWarmupToHoldDelay": 0.22,
+          "triggerHotkey": "RightCommand",
+          "voiceHotkey": "LeftOption"
         }
         """.data(using: .utf8)!
     }
@@ -148,4 +264,6 @@ private struct PartialBridgeConfig: Decodable {
     var focusBounceSettleDelay: TimeInterval?
     var optionWarmupTapDuration: TimeInterval?
     var optionWarmupToHoldDelay: TimeInterval?
+    var triggerHotkey: String?
+    var voiceHotkey: String?
 }

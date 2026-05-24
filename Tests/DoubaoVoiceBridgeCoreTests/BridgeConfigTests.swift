@@ -10,12 +10,14 @@ final class BridgeConfigTests: XCTestCase {
         XCTAssertFalse(configurableFields.contains("userInputMethod"))
         XCTAssertFalse(config.launchAtLogin)
         XCTAssertEqual(config.restoreDelay, 0.20)
-        XCTAssertEqual(config.postSwitchSettleDelay, 1.20)
+        XCTAssertEqual(config.postSwitchSettleDelay, 0.50)
         XCTAssertEqual(config.switchWaitTimeout, 2.00)
         XCTAssertEqual(config.focusBounceBackDelay, 0.16)
         XCTAssertEqual(config.focusBounceSettleDelay, 0.16)
         XCTAssertEqual(config.optionWarmupTapDuration, 0.05)
         XCTAssertEqual(config.optionWarmupToHoldDelay, 0.22)
+        XCTAssertEqual(config.triggerHotkey, BridgeHotkey(keys: [.rightCommand]))
+        XCTAssertEqual(config.voiceHotkey, BridgeHotkey(keys: [.leftOption]))
     }
 
     func testPartialJSONConfigKeepsDefaultsForMissingValues() throws {
@@ -30,7 +32,45 @@ final class BridgeConfigTests: XCTestCase {
 
         XCTAssertFalse(config.launchAtLogin)
         XCTAssertEqual(config.restoreDelay, 0.35)
-        XCTAssertEqual(config.postSwitchSettleDelay, 1.20)
+        XCTAssertEqual(config.postSwitchSettleDelay, 0.50)
+        XCTAssertEqual(config.triggerHotkey, BridgeHotkey(keys: [.rightCommand]))
+    }
+
+    func testJSONConfigParsesPlusSeparatedHotkeys() throws {
+        let data = """
+        {
+          "triggerHotkey": "RightCommand+Space",
+          "voiceHotkey": "LeftOption+Tab"
+        }
+        """.data(using: .utf8)!
+
+        let config = try BridgeConfig.load(from: data)
+
+        XCTAssertEqual(config.triggerHotkey, BridgeHotkey(keys: [.rightCommand, .space]))
+        XCTAssertEqual(config.voiceHotkey, BridgeHotkey(keys: [.leftOption, .tab]))
+    }
+
+    func testJSONConfigRejectsShiftedCharacterHotkeyTokens() throws {
+        let data = """
+        {
+          "triggerHotkey": "RightCommand+!",
+          "voiceHotkey": "LeftOption"
+        }
+        """.data(using: .utf8)!
+
+        let config = try BridgeConfig.load(from: data)
+
+        XCTAssertEqual(config.triggerHotkey, BridgeHotkey(keys: [.rightCommand]))
+        XCTAssertEqual(config.voiceHotkey, BridgeHotkey(keys: [.leftOption]))
+    }
+
+    func testHotkeyMembershipDistinguishesTriggerKeyFromVoiceKey() {
+        let trigger = BridgeHotkey(keys: [.rightCommand])
+        let voice = BridgeHotkey(keys: [.leftOption])
+
+        XCTAssertTrue(trigger.contains(.rightCommand))
+        XCTAssertFalse(trigger.contains(.leftOption))
+        XCTAssertTrue(voice.contains(.leftOption))
     }
 
     func testDefaultLocationCreatesUserConfigFromProjectTemplateWhenMissing() throws {
