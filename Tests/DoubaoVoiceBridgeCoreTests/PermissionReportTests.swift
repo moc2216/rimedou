@@ -14,7 +14,7 @@ final class PermissionReportTests: XCTestCase {
 
         XCTAssertFalse(report.isReady)
         XCTAssertEqual(report.missingPermissions, [.accessibility, .inputMonitoring])
-        XCTAssertEqual(report.message, "DoubaoVoiceBridge needs Accessibility and Input Monitoring permissions before Right Command can trigger voice input.")
+        XCTAssertEqual(report.message, "DoubaoVoiceBridge needs Accessibility and Input Monitoring permissions before the trigger hotkey can start voice input.")
     }
 
     func testSettingsURLsPointAtMatchingPrivacyPanes() {

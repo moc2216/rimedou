@@ -66,13 +66,15 @@ DoubaoVoiceBridge 是一个本地 macOS 菜单栏工具。它把物理右 `Comma
 {
   "launchAtLogin": false,
   "restoreDelay": 0.2,
-  "postSwitchSettleDelay": 1.2,
+  "postSwitchSettleDelay": 0.5,
   "switchWaitTimeout": 2.0,
   "switchPollInterval": 0.05,
   "focusBounceBackDelay": 0.16,
   "focusBounceSettleDelay": 0.16,
   "optionWarmupTapDuration": 0.05,
-  "optionWarmupToHoldDelay": 0.22
+  "optionWarmupToHoldDelay": 0.22,
+  "triggerHotkey": "RightCommand",
+  "voiceHotkey": "LeftOption"
 }
 ```
 
@@ -80,13 +82,17 @@ DoubaoVoiceBridge 是一个本地 macOS 菜单栏工具。它把物理右 `Comma
 
 - `launchAtLogin`：旧版 Login Item 配置保留项，当前版本不再使用；应用会自动使用 LaunchAgent 守护运行
 - `restoreDelay`：松开右 `Command` 后，延迟多久恢复输入法，默认 `0.2`
-- `postSwitchSettleDelay`：切到豆包后，等待系统稳定的时间，默认 `1.2`
+- `postSwitchSettleDelay`：切到豆包后，等待语音模块稳定的时间，推荐 `0.5`；如果连续呼起时偶尔失败，可以逐步调大，最高先试到 `1.0` 左右
 - `switchWaitTimeout`：等待目标输入法确认成功的超时，默认 `2.0`
 - `switchPollInterval`：轮询当前输入法的间隔，默认 `0.05`
 - `focusBounceBackDelay`：做焦点回弹时，切走后多久切回原应用，默认 `0.16`
 - `focusBounceSettleDelay`：切回原应用后，再等多久再触发语音，默认 `0.16`
 - `optionWarmupTapDuration`：左 `Option` 预热按下的持续时间，默认 `0.05`
 - `optionWarmupToHoldDelay`：预热结束到正式按住之间的等待时间，默认 `0.22`
+- `triggerHotkey`：用户按下的触发键，默认 `RightCommand`，支持 `RightCommand+Space` 这类加号组合
+- `voiceHotkey`：应用发给豆包的语音快捷键，默认 `LeftOption`，同样支持加号组合
+
+热键名称大小写不敏感，空格可省略。固定名称包括 `LeftShift`、`RightShift`、`Shift`、`LeftControl`、`RightControl`、`Control`、`LeftOption`、`RightOption`、`Option`、`LeftCommand`、`RightCommand`、`Command`、`Tab`、`Space`。字母、数字和常见符号按键可以直接写基础输入，例如数字键写 `1`，不写 Shift 后的 `!`。
 
 ## 构建
 

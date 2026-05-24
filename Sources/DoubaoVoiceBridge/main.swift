@@ -3,30 +3,36 @@ import ApplicationServices
 import Carbon
 import DoubaoVoiceBridgeCore
 
-private let rightCommandKeyCode: Int64 = 54
-private let leftOptionKeyCode: CGKeyCode = 58
-private let deviceRightCommandMask: UInt64 = 0x10
 private let doubaoInputMethodName = "豆包输入法"
 private let launchAgentLabel = "local.doubao-voice-bridge.keepalive"
+private let keyboardEventMask = (1 << CGEventType.flagsChanged.rawValue)
+    | (1 << CGEventType.keyDown.rawValue)
+    | (1 << CGEventType.keyUp.rawValue)
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let config = BridgeConfig.loadFromDefaultLocation()
+    private var config = BridgeConfig.loadFromDefaultLocation()
     private let logger = AppLogger()
     private let inputSources = InputSourceController()
-    private let optionSender = OptionKeySender()
+    private var voiceHotkeySender: HotkeySender
     private let focusBouncer = FocusBouncer()
     private lazy var launchAgent = LaunchAgentManager(label: launchAgentLabel, logger: logger)
     private var statusItem: NSStatusItem?
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var enabled = true
-    private var rightCommandDown = false
-    private var optionHoldIsDown = false
+    private var triggerHotkeyDown = false
+    private var voiceHotkeyIsDown = false
+    private var activeKeyCodes = Set<Int64>()
     private var permissionWindowController: PermissionWindowController?
     private var didCompleteStartupAfterPermissions = false
     private var sessionID = UUID()
     private var machine = BridgeStateMachine()
     private var inputMethodToRestore: String?
+
+    override init() {
+        voiceHotkeySender = HotkeySender(hotkey: config.voiceHotkey)
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -36,8 +42,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        if optionHoldIsDown {
-            optionSender.up()
+        if voiceHotkeyIsDown {
+            voiceHotkeySender.up()
         }
         restorePreviousInputMethod()
         disableEventTap()
@@ -56,6 +62,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let logItem = NSMenuItem(title: "Open Log", action: #selector(openLog), keyEquivalent: "")
         logItem.target = self
         menu.addItem(logItem)
+
+        let reloadConfigItem = NSMenuItem(title: "Reload Config", action: #selector(reloadConfigFromMenu), keyEquivalent: "")
+        reloadConfigItem.target = self
+        menu.addItem(reloadConfigItem)
 
         let permissionItem = NSMenuItem(title: "Check Permissions", action: #selector(checkPermissionsFromMenu), keyEquivalent: "")
         permissionItem.target = self
@@ -77,7 +87,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !enabled {
             releaseOptionIfNeeded()
             restorePreviousInputMethod()
-            rightCommandDown = false
+            triggerHotkeyDown = false
+            activeKeyCodes.removeAll()
             sessionID = UUID()
             machine.handle(.reset)
         }
@@ -85,6 +96,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openLog() {
         NSWorkspace.shared.open(AppLogger.defaultLogURL)
+    }
+
+    @objc private func reloadConfigFromMenu() {
+        releaseOptionIfNeeded()
+        restorePreviousInputMethod()
+        triggerHotkeyDown = false
+        activeKeyCodes.removeAll()
+        sessionID = UUID()
+        machine.handle(.reset)
+
+        config = BridgeConfig.loadFromDefaultLocation()
+        voiceHotkeySender = HotkeySender(hotkey: config.voiceHotkey)
+        logger.log(
+            "config reloaded: triggerHotkey=\(hotkeyDescription(config.triggerHotkey)) voiceHotkey=\(hotkeyDescription(config.voiceHotkey)) postSwitchSettleDelay=\(config.postSwitchSettleDelay)"
+        )
     }
 
     private func installLaunchAgentIfNeeded() {
@@ -135,7 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return false
         }
 
-        let mask = (1 << CGEventType.flagsChanged.rawValue)
+        let mask = keyboardEventMask
         guard let tap = CGEvent.tapCreate(
             tap: .cghidEventTap,
             place: .headInsertEventTap,
@@ -230,13 +256,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let alert = NSAlert()
         alert.alertStyle = .informational
         alert.messageText = "DoubaoVoiceBridge permissions are ready"
-        alert.informativeText = "Right Command can now be used as push-to-talk."
+        alert.informativeText = "\(hotkeyDescription(config.triggerHotkey)) can now be used as push-to-talk."
         alert.addButton(withTitle: "OK")
         alert.runModal()
     }
 
     private func installEventTap() {
-        let mask = (1 << CGEventType.flagsChanged.rawValue)
+        let mask = keyboardEventMask
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(
             tap: .cghidEventTap,
@@ -268,45 +294,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    fileprivate func handleFlagsChanged(_ event: CGEvent) -> Unmanaged<CGEvent>? {
+    fileprivate func handleKeyboardEvent(_ event: CGEvent, type: CGEventType) -> Unmanaged<CGEvent>? {
         guard enabled else {
             return Unmanaged.passUnretained(event)
         }
 
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        guard keyCode == rightCommandKeyCode else {
+        if type == .keyDown {
+            activeKeyCodes.insert(keyCode)
+        } else if type == .keyUp {
+            activeKeyCodes.remove(keyCode)
+        }
+
+        let isTriggerEvent = isTriggerEvent(keyCode: keyCode)
+        guard isTriggerEvent else {
             return Unmanaged.passUnretained(event)
         }
 
-        let isDown = (event.flags.rawValue & deviceRightCommandMask) != 0
+        let isDown = hotkeyIsDown(config.triggerHotkey, event: event)
         logger.log(
-            "rightcmd flagsChanged: physicalDown=\(isDown) internalDown=\(rightCommandDown) rawFlags=0x\(String(event.flags.rawValue, radix: 16))"
+            "trigger hotkey event: physicalDown=\(isDown) internalDown=\(triggerHotkeyDown) keyCode=\(keyCode) rawFlags=0x\(String(event.flags.rawValue, radix: 16))"
         )
-        if isDown, !rightCommandDown {
-            rightCommandDown = true
-            handleRightCommandDown()
-        } else if !isDown, rightCommandDown {
-            rightCommandDown = false
-            handleRightCommandUp()
+        if isDown, !triggerHotkeyDown {
+            triggerHotkeyDown = true
+            handleTriggerHotkeyDown()
+        } else if !isDown, triggerHotkeyDown {
+            triggerHotkeyDown = false
+            handleTriggerHotkeyUp()
         }
 
-        return nil
+        return isTriggerEvent ? nil : Unmanaged.passUnretained(event)
     }
 
-    private func handleRightCommandDown() {
-        logger.log("right command down")
+    private func handleTriggerHotkeyDown() {
+        logger.log("trigger hotkey down")
         let actions = machine.handle(.rightCommandDown)
         if actions.contains(.startVoiceSession) {
             startVoiceSession()
         }
     }
 
-    private func handleRightCommandUp() {
-        logger.log("right command up")
+    private func handleTriggerHotkeyUp() {
+        logger.log("trigger hotkey up")
         let actions = machine.handle(.rightCommandUp)
         if actions.contains(.cancelPendingOptionHold) {
             sessionID = UUID()
-            logger.log("cancel pending option hold")
+            logger.log("cancel pending voice hotkey hold")
         }
         if actions.contains(.releaseOptionHold) {
             releaseOptionIfNeeded()
@@ -315,6 +348,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + config.restoreDelay) { [weak self] in
                 self?.restorePreviousInputMethod()
             }
+        }
+    }
+
+    private func hotkeyIsDown(_ hotkey: BridgeHotkey, event: CGEvent) -> Bool {
+        hotkey.keys.allSatisfy { key in
+            if key.isModifier {
+                return modifierIsDown(key, flags: event.flags)
+            }
+            return keyCodes(for: key).contains { activeKeyCodes.contains(Int64($0)) }
+        }
+    }
+
+    private func isTriggerEvent(keyCode: Int64) -> Bool {
+        config.triggerHotkey.keys.contains { key in
+            keyCodes(for: key).contains { Int64($0) == keyCode }
         }
     }
 
@@ -340,7 +388,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.logger.log(confirmed ? "confirmed doubao input source" : "doubao input source confirmation timed out")
 
             DispatchQueue.main.async {
-                guard self.sessionID == currentSession, self.rightCommandDown else { return }
+                guard self.sessionID == currentSession, self.triggerHotkeyDown else { return }
                 self.logger.log("start app focus bounce")
                 self.focusBouncer.bounce(
                     originalApp: originalApp,
@@ -355,31 +403,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startOptionWarmupIfCurrent(_ currentSession: UUID) {
-        guard sessionID == currentSession, rightCommandDown else {
+        guard sessionID == currentSession, triggerHotkeyDown else {
             return
         }
-        logger.log("left option warmup down/up")
-        optionSender.down()
+        logger.log("voice hotkey warmup down/up")
+        voiceHotkeySender.down()
         DispatchQueue.main.asyncAfter(deadline: .now() + config.optionWarmupTapDuration) { [weak self] in
             guard let self else { return }
-            self.optionSender.up()
+            self.voiceHotkeySender.up()
             DispatchQueue.main.asyncAfter(deadline: .now() + self.config.optionWarmupToHoldDelay) { [weak self] in
-                guard let self, self.sessionID == currentSession, self.rightCommandDown else { return }
-                self.logger.log("left option formal hold down")
-                self.optionSender.down()
-                self.optionHoldIsDown = true
+                guard let self, self.sessionID == currentSession, self.triggerHotkeyDown else { return }
+                self.logger.log("voice hotkey formal hold down")
+                self.voiceHotkeySender.down()
+                self.voiceHotkeyIsDown = true
                 self.machine.handle(.optionHoldStarted)
             }
         }
     }
 
     private func releaseOptionIfNeeded() {
-        guard optionHoldIsDown else {
+        guard voiceHotkeyIsDown else {
             return
         }
-        optionSender.up()
-        optionHoldIsDown = false
-        logger.log("left option release")
+        voiceHotkeySender.up()
+        voiceHotkeyIsDown = false
+        logger.log("voice hotkey release")
     }
 
     private func restorePreviousInputMethod() {
@@ -405,15 +453,145 @@ enum DoubaoVoiceBridgeMain {
 }
 
 private let eventTapCallback: CGEventTapCallBack = { _, type, event, refcon in
-    guard type == .flagsChanged, let refcon else {
+    guard [.flagsChanged, .keyDown, .keyUp].contains(type), let refcon else {
         return Unmanaged.passUnretained(event)
     }
     let app = Unmanaged<AppDelegate>.fromOpaque(refcon).takeUnretainedValue()
-    return app.handleFlagsChanged(event)
+    return app.handleKeyboardEvent(event, type: type)
 }
 
 private let permissionProbeEventTapCallback: CGEventTapCallBack = { _, _, event, _ in
     Unmanaged.passUnretained(event)
+}
+
+private let leftShiftMask: UInt64 = 0x2
+private let rightShiftMask: UInt64 = 0x4
+private let leftControlMask: UInt64 = 0x1
+private let rightControlMask: UInt64 = 0x2000
+private let leftOptionMask: UInt64 = 0x20
+private let rightOptionMask: UInt64 = 0x40
+private let leftCommandMask: UInt64 = 0x8
+private let rightCommandMask: UInt64 = 0x10
+
+private func modifierIsDown(_ key: BridgeKey, flags: CGEventFlags) -> Bool {
+    switch key {
+    case .leftShift:
+        return (flags.rawValue & leftShiftMask) != 0
+    case .rightShift:
+        return (flags.rawValue & rightShiftMask) != 0
+    case .shift:
+        return flags.contains(.maskShift)
+    case .leftControl:
+        return (flags.rawValue & leftControlMask) != 0
+    case .rightControl:
+        return (flags.rawValue & rightControlMask) != 0
+    case .control:
+        return flags.contains(.maskControl)
+    case .leftOption:
+        return (flags.rawValue & leftOptionMask) != 0
+    case .rightOption:
+        return (flags.rawValue & rightOptionMask) != 0
+    case .option:
+        return flags.contains(.maskAlternate)
+    case .leftCommand:
+        return (flags.rawValue & leftCommandMask) != 0
+    case .rightCommand:
+        return (flags.rawValue & rightCommandMask) != 0
+    case .command:
+        return flags.contains(.maskCommand)
+    case .tab, .space, .character:
+        return false
+    }
+}
+
+private func flags(for hotkey: BridgeHotkey) -> CGEventFlags {
+    hotkey.keys.reduce(CGEventFlags()) { flags, key in
+        var flags = flags
+        switch key {
+        case .leftShift, .rightShift, .shift:
+            flags.insert(.maskShift)
+        case .leftControl, .rightControl, .control:
+            flags.insert(.maskControl)
+        case .leftOption, .rightOption, .option:
+            flags.insert(.maskAlternate)
+        case .leftCommand, .rightCommand, .command:
+            flags.insert(.maskCommand)
+        case .tab, .space, .character:
+            break
+        }
+        return flags
+    }
+}
+
+private func keyCode(for key: BridgeKey) -> CGKeyCode? {
+    keyCodes(for: key).first
+}
+
+private func keyCodes(for key: BridgeKey) -> [CGKeyCode] {
+    switch key {
+    case .leftShift:
+        return [56]
+    case .rightShift:
+        return [60]
+    case .shift:
+        return [56, 60]
+    case .leftControl:
+        return [59]
+    case .rightControl:
+        return [62]
+    case .control:
+        return [59, 62]
+    case .leftOption:
+        return [58]
+    case .rightOption:
+        return [61]
+    case .option:
+        return [58, 61]
+    case .leftCommand:
+        return [55]
+    case .rightCommand:
+        return [54]
+    case .command:
+        return [55, 54]
+    case .tab:
+        return [48]
+    case .space:
+        return [49]
+    case .character(let character):
+        return characterKeyCodes[character].map { [$0] } ?? []
+    }
+}
+
+private let characterKeyCodes: [String: CGKeyCode] = [
+    "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7,
+    "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14, "r": 15,
+    "y": 16, "t": 17, "1": 18, "2": 19, "3": 20, "4": 21, "6": 22,
+    "5": 23, "=": 24, "9": 25, "7": 26, "-": 27, "8": 28, "0": 29,
+    "]": 30, "o": 31, "u": 32, "[": 33, "i": 34, "p": 35, "l": 37,
+    "j": 38, "'": 39, "k": 40, ";": 41, "\\": 42, ",": 43, "/": 44,
+    "n": 45, "m": 46, ".": 47, "`": 50
+]
+
+private func hotkeyDescription(_ hotkey: BridgeHotkey) -> String {
+    hotkey.keys.map { key in
+        switch key {
+        case .leftShift: return "LeftShift"
+        case .rightShift: return "RightShift"
+        case .shift: return "Shift"
+        case .leftControl: return "LeftControl"
+        case .rightControl: return "RightControl"
+        case .control: return "Control"
+        case .leftOption: return "LeftOption"
+        case .rightOption: return "RightOption"
+        case .option: return "Option"
+        case .leftCommand: return "LeftCommand"
+        case .rightCommand: return "RightCommand"
+        case .command: return "Command"
+        case .tab: return "Tab"
+        case .space: return "Space"
+        case .character(let character): return character
+        }
+    }.joined(separator: "+")
 }
 
 private final class PermissionWindowController: NSWindowController, NSWindowDelegate {
@@ -495,7 +673,7 @@ private final class PermissionWindowController: NSWindowController, NSWindowDele
         title.alignment = .center
         title.lineBreakMode = .byWordWrapping
 
-        let message = NSTextField(wrappingLabelWithString: "Doubao Voice Bridge needs these permissions to listen for Right Command and return focus after voice input. They are only used while the bridge is running.")
+        let message = NSTextField(wrappingLabelWithString: "Doubao Voice Bridge needs these permissions to listen for the trigger hotkey and return focus after voice input. They are only used while the bridge is running.")
         message.font = .systemFont(ofSize: 16)
         message.textColor = .secondaryLabelColor
         message.alignment = .center
@@ -515,7 +693,7 @@ private final class PermissionWindowController: NSWindowController, NSWindowDele
 
         let inputMonitoringRow = permissionRow(
             title: "Input Monitoring",
-            detail: "Allows the bridge to detect Right Command as your push-to-talk trigger.",
+            detail: "Allows the bridge to detect your configured push-to-talk trigger.",
             statusLabel: inputMonitoringStatus,
             actionButton: inputMonitoringAction,
             symbolName: "keyboard",
@@ -822,20 +1000,38 @@ private final class CallbackButton: NSButton {
     }
 }
 
-private final class OptionKeySender {
+private final class HotkeySender {
+    private let hotkey: BridgeHotkey
     private let source = CGEventSource(stateID: .hidSystemState)
 
+    init(hotkey: BridgeHotkey) {
+        self.hotkey = hotkey
+    }
+
     func down() {
-        post(down: true)
+        for key in hotkey.keys where key.isModifier {
+            post(key: key, down: true)
+        }
+        for key in hotkey.keys where !key.isModifier {
+            post(key: key, down: true)
+        }
     }
 
     func up() {
-        post(down: false)
+        for key in hotkey.keys.reversed() where !key.isModifier {
+            post(key: key, down: false)
+        }
+        for key in hotkey.keys.reversed() where key.isModifier {
+            post(key: key, down: false)
+        }
     }
 
-    private func post(down: Bool) {
-        let event = CGEvent(keyboardEventSource: source, virtualKey: leftOptionKeyCode, keyDown: down)
-        event?.flags = down ? .maskAlternate : []
+    private func post(key: BridgeKey, down: Bool) {
+        guard let keyCode = keyCode(for: key) else {
+            return
+        }
+        let event = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: down)
+        event?.flags = down ? flags(for: hotkey) : []
         event?.post(tap: .cghidEventTap)
     }
 }
