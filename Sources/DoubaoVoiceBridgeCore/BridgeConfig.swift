@@ -116,6 +116,7 @@ public struct BridgeConfig: Equatable, Sendable {
     public var switchPollInterval: TimeInterval
     public var focusBounceBackDelay: TimeInterval
     public var focusBounceSettleDelay: TimeInterval
+    public var triggerHoldDelay: TimeInterval
     public var optionWarmupTapDuration: TimeInterval
     public var optionWarmupToHoldDelay: TimeInterval
     public var triggerHotkey: BridgeHotkey
@@ -129,6 +130,7 @@ public struct BridgeConfig: Equatable, Sendable {
         switchPollInterval: 0.05,
         focusBounceBackDelay: 0.16,
         focusBounceSettleDelay: 0.16,
+        triggerHoldDelay: 0.25,
         optionWarmupTapDuration: 0.05,
         optionWarmupToHoldDelay: 0.22,
         triggerHotkey: BridgeHotkey(keys: [.rightCommand]),
@@ -145,6 +147,7 @@ public struct BridgeConfig: Equatable, Sendable {
         config.switchPollInterval = partial.switchPollInterval ?? config.switchPollInterval
         config.focusBounceBackDelay = partial.focusBounceBackDelay ?? config.focusBounceBackDelay
         config.focusBounceSettleDelay = partial.focusBounceSettleDelay ?? config.focusBounceSettleDelay
+        config.triggerHoldDelay = partial.triggerHoldDelay ?? config.triggerHoldDelay
         config.optionWarmupTapDuration = partial.optionWarmupTapDuration ?? config.optionWarmupTapDuration
         config.optionWarmupToHoldDelay = partial.optionWarmupToHoldDelay ?? config.optionWarmupToHoldDelay
         config.triggerHotkey = partial.triggerHotkey.flatMap(BridgeHotkey.parse) ?? config.triggerHotkey
@@ -245,6 +248,7 @@ public struct BridgeConfig: Equatable, Sendable {
           "switchPollInterval": 0.05,
           "focusBounceBackDelay": 0.16,
           "focusBounceSettleDelay": 0.16,
+          "triggerHoldDelay": 0.25,
           "optionWarmupTapDuration": 0.05,
           "optionWarmupToHoldDelay": 0.22,
           "triggerHotkey": "RightCommand",
@@ -262,6 +266,7 @@ private struct PartialBridgeConfig: Decodable {
     var switchPollInterval: TimeInterval?
     var focusBounceBackDelay: TimeInterval?
     var focusBounceSettleDelay: TimeInterval?
+    var triggerHoldDelay: TimeInterval?
     var optionWarmupTapDuration: TimeInterval?
     var optionWarmupToHoldDelay: TimeInterval?
     var triggerHotkey: String?

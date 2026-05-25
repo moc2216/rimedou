@@ -6,6 +6,7 @@
   "switchPollInterval": 0.05,
   "focusBounceBackDelay": 0.16,
   "focusBounceSettleDelay": 0.16,
+  "triggerHoldDelay": 0.25,
   "optionWarmupTapDuration": 0.05,
   "optionWarmupToHoldDelay": 0.22,
   "triggerHotkey": "RightCommand",

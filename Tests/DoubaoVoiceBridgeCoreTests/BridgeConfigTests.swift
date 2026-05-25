@@ -14,6 +14,7 @@ final class BridgeConfigTests: XCTestCase {
         XCTAssertEqual(config.switchWaitTimeout, 2.00)
         XCTAssertEqual(config.focusBounceBackDelay, 0.16)
         XCTAssertEqual(config.focusBounceSettleDelay, 0.16)
+        XCTAssertEqual(config.triggerHoldDelay, 0.25)
         XCTAssertEqual(config.optionWarmupTapDuration, 0.05)
         XCTAssertEqual(config.optionWarmupToHoldDelay, 0.22)
         XCTAssertEqual(config.triggerHotkey, BridgeHotkey(keys: [.rightCommand]))
@@ -33,6 +34,7 @@ final class BridgeConfigTests: XCTestCase {
         XCTAssertFalse(config.launchAtLogin)
         XCTAssertEqual(config.restoreDelay, 0.35)
         XCTAssertEqual(config.postSwitchSettleDelay, 0.50)
+        XCTAssertEqual(config.triggerHoldDelay, 0.25)
         XCTAssertEqual(config.triggerHotkey, BridgeHotkey(keys: [.rightCommand]))
     }
 
