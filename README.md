@@ -4,7 +4,7 @@
 
 <h1 align="center">DoubaoVoiceBridge</h1>
 
-DoubaoVoiceBridge 是一个本地 macOS 菜单栏工具。它把物理右 `Command` 键做成按住说话的开关：平时保留你习惯的输入法，按住右 `Command` 时切到豆包输入法进行语音输入，松开后自动恢复回日常输入法。
+DoubaoVoiceBridge 是一个本地 macOS 菜单栏工具。它把一个全局快捷键做成按住说话的开关：平时保留你习惯的输入法，按住触发快捷键时切到豆包输入法进行语音输入，松开后自动恢复回日常输入法。默认触发键是右 `Command`，也可以在配置文件里自由调整为自己习惯的快捷键组合。
 
 ## 前置条件
 
@@ -37,14 +37,15 @@ DoubaoVoiceBridge 是一个本地 macOS 菜单栏工具。它把物理右 `Comma
 
 1. 确认豆包输入法已安装
 2. 切到你当前想正常使用的输入法
-3. 在任意可输入文本的地方，按住右 `Command`
-4. 说话结束后松开右 `Command`
-5. 应用会自动切回按下右 `Command` 前的输入法
+3. 在任意可输入文本的地方，按住触发快捷键，默认是右 `Command`
+4. 说话结束后松开触发快捷键
+5. 应用会自动切回按下触发快捷键前的输入法
 
 菜单栏里可以：
 
-- `Disable Key Capture` / `Enable Key Capture`：临时停用或启用右 `Command` 接管，应用和守护仍保持运行
+- `Disable Key Capture` / `Enable Key Capture`：临时停用或启用触发快捷键接管，应用和守护仍保持运行
 - `Open Log`：打开日志
+- `Reload Config`：重新读取配置文件，改完快捷键或延迟后可直接生效
 - `Check Permissions`：重新检查权限
 - `Quit and Disable Auto Restart`：退出应用，并关闭 LaunchAgent 自动重启
 
@@ -81,7 +82,7 @@ DoubaoVoiceBridge 是一个本地 macOS 菜单栏工具。它把物理右 `Comma
 各项含义：
 
 - `launchAtLogin`：旧版 Login Item 配置保留项，当前版本不再使用；应用会自动使用 LaunchAgent 守护运行
-- `restoreDelay`：松开右 `Command` 后，延迟多久恢复输入法，默认 `0.2`
+- `restoreDelay`：松开触发快捷键后，延迟多久恢复输入法，默认 `0.2`
 - `postSwitchSettleDelay`：切到豆包后，等待语音模块稳定的时间，推荐 `0.5`；如果连续呼起时偶尔失败，可以逐步调大，最高先试到 `1.0` 左右
 - `switchWaitTimeout`：等待目标输入法确认成功的超时，默认 `2.0`
 - `switchPollInterval`：轮询当前输入法的间隔，默认 `0.05`
@@ -126,7 +127,7 @@ DoubaoVoiceBridge.app/Contents/MacOS/DoubaoVoiceBridge
 
 菜单里的 `Quit and Disable Auto Restart` 会卸载 LaunchAgent 并退出应用。之后再次手动打开应用时，会重新安装并启用 LaunchAgent。
 
-菜单里的 `Disable Key Capture` 只暂停右 `Command` 接管，不会退出应用，也不会关闭 LaunchAgent。这个开关适合临时不想让应用接管按键时使用。
+菜单里的 `Disable Key Capture` 只暂停触发快捷键接管，不会退出应用，也不会关闭 LaunchAgent。这个开关适合临时不想让应用接管按键时使用。
 
 开发时也可以用脚本查看或手动调整 LaunchAgent：
 
