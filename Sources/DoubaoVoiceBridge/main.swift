@@ -21,6 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var runLoopSource: CFRunLoopSource?
     private var enabled = true
     private var triggerHotkeyDown = false
+    private var triggerHoldPending = false
+    private var triggerHoldPendingID = UUID()
     private var voiceHotkeyIsDown = false
     private var activeKeyCodes = Set<Int64>()
     private var permissionWindowController: PermissionWindowController?
@@ -63,6 +65,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         logItem.target = self
         menu.addItem(logItem)
 
+        let configItem = NSMenuItem(title: "Open Config", action: #selector(openConfig), keyEquivalent: "")
+        configItem.target = self
+        menu.addItem(configItem)
+
         let reloadConfigItem = NSMenuItem(title: "Reload Config", action: #selector(reloadConfigFromMenu), keyEquivalent: "")
         reloadConfigItem.target = self
         menu.addItem(reloadConfigItem)
@@ -88,6 +94,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             releaseOptionIfNeeded()
             restorePreviousInputMethod()
             triggerHotkeyDown = false
+            triggerHoldPending = false
+            triggerHoldPendingID = UUID()
             activeKeyCodes.removeAll()
             sessionID = UUID()
             machine.handle(.reset)
@@ -98,10 +106,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.open(AppLogger.defaultLogURL)
     }
 
+    @objc private func openConfig() {
+        _ = BridgeConfig.loadFromDefaultLocation()
+        NSWorkspace.shared.activateFileViewerSelecting([BridgeConfig.defaultUserConfigURL])
+    }
+
     @objc private func reloadConfigFromMenu() {
         releaseOptionIfNeeded()
         restorePreviousInputMethod()
         triggerHotkeyDown = false
+        triggerHoldPending = false
+        triggerHoldPendingID = UUID()
         activeKeyCodes.removeAll()
         sessionID = UUID()
         machine.handle(.reset)
@@ -109,7 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         config = BridgeConfig.loadFromDefaultLocation()
         voiceHotkeySender = HotkeySender(hotkey: config.voiceHotkey)
         logger.log(
-            "config reloaded: triggerHotkey=\(hotkeyDescription(config.triggerHotkey)) voiceHotkey=\(hotkeyDescription(config.voiceHotkey)) postSwitchSettleDelay=\(config.postSwitchSettleDelay)"
+            "config reloaded: triggerHotkey=\(hotkeyDescription(config.triggerHotkey)) voiceHotkey=\(hotkeyDescription(config.voiceHotkey)) triggerHoldDelay=\(config.triggerHoldDelay) postSwitchSettleDelay=\(config.postSwitchSettleDelay)"
         )
     }
 
@@ -307,6 +322,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let isTriggerEvent = isTriggerEvent(keyCode: keyCode)
+        if type == .keyDown, !isTriggerEvent, triggerHoldPending {
+            cancelPendingTriggerHold(reason: "non-trigger key pressed before hold threshold")
+        }
         guard isTriggerEvent else {
             return Unmanaged.passUnretained(event)
         }
@@ -323,7 +341,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             handleTriggerHotkeyUp()
         }
 
-        return isTriggerEvent ? nil : Unmanaged.passUnretained(event)
+        return shouldSwallowTriggerEvent() ? nil : Unmanaged.passUnretained(event)
     }
 
     private func handleTriggerHotkeyDown() {
@@ -332,10 +350,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if actions.contains(.startVoiceSession) {
             startVoiceSession()
         }
+        triggerHoldPending = true
+        triggerHoldPendingID = UUID()
+        let pendingID = triggerHoldPendingID
+        DispatchQueue.main.asyncAfter(deadline: .now() + config.triggerHoldDelay) { [weak self] in
+            self?.completePendingTriggerHoldIfCurrent(pendingID)
+        }
     }
 
     private func handleTriggerHotkeyUp() {
         logger.log("trigger hotkey up")
+        triggerHoldPending = false
+        triggerHoldPendingID = UUID()
         let actions = machine.handle(.rightCommandUp)
         if actions.contains(.cancelPendingOptionHold) {
             sessionID = UUID()
@@ -351,6 +377,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func completePendingTriggerHoldIfCurrent(_ pendingID: UUID) {
+        guard triggerHoldPending, triggerHoldPendingID == pendingID, triggerHotkeyDown else {
+            return
+        }
+        triggerHoldPending = false
+        logger.log("trigger hold threshold passed")
+        let actions = machine.handle(.triggerHoldThresholdPassed)
+        if actions.contains(.startVoiceSession) {
+            startVoiceSession()
+        }
+    }
+
+    private func cancelPendingTriggerHold(reason: String) {
+        triggerHoldPending = false
+        triggerHoldPendingID = UUID()
+        sessionID = UUID()
+        machine.handle(.reset)
+        logger.log("cancel pending trigger hold: \(reason)")
+    }
+
     private func hotkeyIsDown(_ hotkey: BridgeHotkey, event: CGEvent) -> Bool {
         hotkey.keys.allSatisfy { key in
             if key.isModifier {
@@ -364,6 +410,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         config.triggerHotkey.keys.contains { key in
             keyCodes(for: key).contains { Int64($0) == keyCode }
         }
+    }
+
+    private func shouldSwallowTriggerEvent() -> Bool {
+        !config.triggerHotkey.keys.allSatisfy(\.isModifier)
     }
 
     private func startVoiceSession() {
