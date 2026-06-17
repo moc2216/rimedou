@@ -27,7 +27,8 @@ public final class InputSourceController: @unchecked Sendable {
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            let current = currentInputSourceName()
+            // TISCopyCurrentKeyboardInputSource must be called from the main thread.
+            let current = DispatchQueue.main.sync { currentInputSourceName() }
             if current == value || current.localizedCaseInsensitiveContains(value) {
                 return true
             }
