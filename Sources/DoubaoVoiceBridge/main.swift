@@ -426,9 +426,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         logger.log("record original input source: \(currentInput)")
         logger.log("switch to doubao input source: \(doubaoInputMethodName)")
 
+        // TIS APIs (selectInputSource, TISCreateInputSourceList) must be called
+        // from the main thread. macOS 15+ enforces this via dispatch assertion.
+        _ = inputSources.selectInputSource(namedOrIdentifiedBy: doubaoInputMethodName)
+
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            _ = self.inputSources.selectInputSource(namedOrIdentifiedBy: doubaoInputMethodName)
             Thread.sleep(forTimeInterval: self.config.postSwitchSettleDelay)
             let confirmed = self.inputSources.waitUntilActive(
                 matches: doubaoInputMethodName,
