@@ -286,7 +286,7 @@ TDD 第一层不碰真实 macOS API，先测纯逻辑：
 
 实现阶段：
 
-- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache switch-only-doubao-voice-input-tests`：跑状态机和配置测试。
+- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache rimedou-tests`：跑状态机和配置测试。
 - `swift run`：手动运行开发版工具。
 - 手动验收：在普通输入框中验证右 Ctrl、Type4Me 让渡、鼠须管恢复。
 

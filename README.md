@@ -1,4 +1,4 @@
-# SwitchOnlyDoubaoVoiceInput
+# RimeDou
 
 只借用豆包输入法的语音输入能力，日常键盘输入仍回到鼠须管。
 
@@ -55,8 +55,8 @@ Type4Me：/Applications/Type4Me.app
 
 最理想的方式是从 GitHub Release 下载已经打包好的 zip：
 
-1. 下载 `SwitchOnlyDoubaoVoiceInput-v0.1.0.zip`。
-2. 解压后得到 `SwitchOnlyDoubaoVoiceInput.app`。
+1. 下载 `RimeDou-v0.1.0.zip`。
+2. 解压后得到 `RimeDou.app`。
 3. 把 app 拖到 `/Applications`。
 4. 双击打开。
 5. 按系统提示授予权限。
@@ -75,8 +75,8 @@ Type4Me：/Applications/Type4Me.app
 克隆仓库：
 
 ```bash
-git clone https://github.com/moc2216/switch-only-doubao-voice-input.git
-cd switch-only-doubao-voice-input
+git clone https://github.com/moc2216/rimedou.git
+cd rimedou
 ```
 
 运行测试：
@@ -87,7 +87,7 @@ env CLANG_MODULE_CACHE_PATH=.build/module-cache \
   swift run \
   --disable-sandbox \
   --cache-path .build/swiftpm-cache \
-  switch-only-doubao-voice-input-tests
+  rimedou-tests
 ```
 
 构建 app：
@@ -99,20 +99,20 @@ env CLANG_MODULE_CACHE_PATH=.build/module-cache \
 生成结果：
 
 ```text
-dist/SwitchOnlyDoubaoVoiceInput.app
+dist/RimeDou.app
 ```
 
 打开开发构建：
 
 ```bash
-open dist/SwitchOnlyDoubaoVoiceInput.app
+open dist/RimeDou.app
 ```
 
 复制到 `/Applications`：
 
 ```bash
-ditto dist/SwitchOnlyDoubaoVoiceInput.app /Applications/SwitchOnlyDoubaoVoiceInput.app
-open /Applications/SwitchOnlyDoubaoVoiceInput.app
+ditto dist/RimeDou.app /Applications/RimeDou.app
+open /Applications/RimeDou.app
 ```
 
 ## 打包给普通用户
@@ -126,7 +126,7 @@ open /Applications/SwitchOnlyDoubaoVoiceInput.app
 生成结果：
 
 ```text
-dist/SwitchOnlyDoubaoVoiceInput-v0.1.0.zip
+dist/RimeDou-v0.1.0.zip
 ```
 
 这个 zip 可以上传到 GitHub Release，供普通用户下载。

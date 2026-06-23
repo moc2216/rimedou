@@ -1,4 +1,4 @@
-import SwitchOnlyDoubaoVoiceInputCore
+import RimeDouCore
 
 enum RightControlRapidRepeatGuardTests {
     static func run() {

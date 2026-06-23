@@ -3,34 +3,34 @@
 import PackageDescription
 
 let package = Package(
-    name: "SwitchOnlyDoubaoVoiceInput",
+    name: "RimeDou",
     platforms: [
         .macOS(.v14)
     ],
     products: [
         .executable(
-            name: "switch-only-doubao-voice-input",
-            targets: ["SwitchOnlyDoubaoVoiceInput"]
+            name: "rimedou",
+            targets: ["RimeDou"]
         ),
         .executable(
-            name: "switch-only-doubao-voice-input-tests",
-            targets: ["SwitchOnlyDoubaoVoiceInputTests"]
+            name: "rimedou-tests",
+            targets: ["RimeDouTests"]
         )
     ],
     targets: [
         .target(
-            name: "SwitchOnlyDoubaoVoiceInputCore",
-            path: "src/SwitchOnlyDoubaoVoiceInputCore"
+            name: "RimeDouCore",
+            path: "src/RimeDouCore"
         ),
         .executableTarget(
-            name: "SwitchOnlyDoubaoVoiceInput",
-            dependencies: ["SwitchOnlyDoubaoVoiceInputCore"],
-            path: "src/SwitchOnlyDoubaoVoiceInput"
+            name: "RimeDou",
+            dependencies: ["RimeDouCore"],
+            path: "src/RimeDou"
         ),
         .executableTarget(
-            name: "SwitchOnlyDoubaoVoiceInputTests",
-            dependencies: ["SwitchOnlyDoubaoVoiceInputCore"],
-            path: "tests/SwitchOnlyDoubaoVoiceInputTests"
+            name: "RimeDouTests",
+            dependencies: ["RimeDouCore"],
+            path: "tests/RimeDouTests"
         )
     ]
 )

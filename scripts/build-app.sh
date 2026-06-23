@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APP_NAME="SwitchOnlyDoubaoVoiceInput"
-BUNDLE_ID="com.local.switch-only-doubao-voice-input"
-PRODUCT_NAME="switch-only-doubao-voice-input"
+APP_NAME="RimeDou"
+BUNDLE_ID="com.local.rimedou"
+PRODUCT_NAME="rimedou"
 DIST_DIR="$ROOT_DIR/dist"
 APP_DIR="$DIST_DIR/$APP_NAME.app"
 CONTENTS_DIR="$APP_DIR/Contents"

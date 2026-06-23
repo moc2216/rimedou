@@ -1,4 +1,4 @@
-import SwitchOnlyDoubaoVoiceInputCore
+import RimeDouCore
 import Foundation
 
 @main

@@ -1,4 +1,4 @@
-import SwitchOnlyDoubaoVoiceInputCore
+import RimeDouCore
 
 enum HotkeyTests {
     static func run() {

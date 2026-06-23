@@ -7,7 +7,7 @@
 需要授权的 App：
 
 ```text
-dist/SwitchOnlyDoubaoVoiceInput.app
+dist/RimeDou.app
 ```
 
 需要授予的权限：
@@ -26,7 +26,7 @@ zsh scripts/build-app.sh
 确认生成：
 
 ```text
-dist/SwitchOnlyDoubaoVoiceInput.app
+dist/RimeDou.app
 ```
 
 ## 授权步骤
@@ -35,19 +35,19 @@ dist/SwitchOnlyDoubaoVoiceInput.app
 
 1. 进入“隐私与安全性”。
 2. 进入“输入监听”。
-3. 添加并启用 `dist/SwitchOnlyDoubaoVoiceInput.app`。
+3. 添加并启用 `dist/RimeDou.app`。
 4. 回到“隐私与安全性”。
 5. 进入“辅助功能”。
-6. 添加并启用 `dist/SwitchOnlyDoubaoVoiceInput.app`。
+6. 添加并启用 `dist/RimeDou.app`。
 
-如果系统不允许选择项目内的 App，可以先在 Finder 中定位 `dist/SwitchOnlyDoubaoVoiceInput.app`，再拖到对应权限列表里。
+如果系统不允许选择项目内的 App，可以先在 Finder 中定位 `dist/RimeDou.app`，再拖到对应权限列表里。
 
 ## 权限检查
 
 授权后运行：
 
 ```bash
-dist/SwitchOnlyDoubaoVoiceInput.app/Contents/MacOS/SwitchOnlyDoubaoVoiceInput --check-hotkey-permission
+dist/RimeDou.app/Contents/MacOS/RimeDou --check-hotkey-permission
 ```
 
 期望输出：
@@ -59,7 +59,7 @@ inputMonitoringPermission=true
 再运行：
 
 ```bash
-dist/SwitchOnlyDoubaoVoiceInput.app/Contents/MacOS/SwitchOnlyDoubaoVoiceInput --check-voice-control-permission
+dist/RimeDou.app/Contents/MacOS/RimeDou --check-voice-control-permission
 ```
 
 期望输出：
@@ -73,7 +73,7 @@ accessibilityPermission=true
 运行：
 
 ```bash
-dist/SwitchOnlyDoubaoVoiceInput.app/Contents/MacOS/SwitchOnlyDoubaoVoiceInput --check-input-sources
+dist/RimeDou.app/Contents/MacOS/RimeDou --check-input-sources
 ```
 
 期望至少包含：
@@ -88,7 +88,7 @@ doubaoInputSourceId=com.bytedance.inputmethod.doubaoime.pinyin exists=true selec
 Type4Me 未运行时：
 
 ```bash
-dist/SwitchOnlyDoubaoVoiceInput.app/Contents/MacOS/SwitchOnlyDoubaoVoiceInput --check-external-voice-tool
+dist/RimeDou.app/Contents/MacOS/RimeDou --check-external-voice-tool
 ```
 
 期望：
@@ -108,7 +108,7 @@ externalVoiceToolRunning=true
 运行：
 
 ```bash
-dist/SwitchOnlyDoubaoVoiceInput.app/Contents/MacOS/SwitchOnlyDoubaoVoiceInput --listen-hotkeys-once
+dist/RimeDou.app/Contents/MacOS/RimeDou --listen-hotkeys-once
 ```
 
 按左 Ctrl：
@@ -128,7 +128,7 @@ hotkeyEvent=rightControlPressed
 运行：
 
 ```bash
-dist/SwitchOnlyDoubaoVoiceInput.app/Contents/MacOS/SwitchOnlyDoubaoVoiceInput --run
+dist/RimeDou.app/Contents/MacOS/RimeDou --run
 ```
 
 Type4Me 未运行时：
@@ -161,5 +161,5 @@ Type4Me 运行时：
 如果验收过程中当前输入法停在豆包，可以运行：
 
 ```bash
-dist/SwitchOnlyDoubaoVoiceInput.app/Contents/MacOS/SwitchOnlyDoubaoVoiceInput --set-input-source im.rime.inputmethod.Squirrel.Hans
+dist/RimeDou.app/Contents/MacOS/RimeDou --set-input-source im.rime.inputmethod.Squirrel.Hans
 ```

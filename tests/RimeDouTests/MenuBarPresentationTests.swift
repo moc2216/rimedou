@@ -1,4 +1,4 @@
-import SwitchOnlyDoubaoVoiceInputCore
+import RimeDouCore
 
 enum MenuBarPresentationTests {
     static func run() {

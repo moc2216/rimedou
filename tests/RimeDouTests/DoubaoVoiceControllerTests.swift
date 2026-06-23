@@ -1,4 +1,4 @@
-import SwitchOnlyDoubaoVoiceInputCore
+import RimeDouCore
 
 enum DoubaoVoiceControllerTests {
     static func run() {
