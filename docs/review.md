@@ -30,7 +30,7 @@
 自动测试通过：
 
 ```bash
-env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache switch-only-doubao-voice-input-tests
+env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache rimedou-tests
 ```
 
 输出：
@@ -48,7 +48,7 @@ doubaoInputSourceSelectable=true
 inputMonitoringPermission=false
 accessibilityPermission=false
 externalVoiceToolRunning=false
-switch-only-doubao-voice-input error: Input monitoring permission is missing
+rimedou error: Input monitoring permission is missing
 ```
 
 输入源切换在沙盒外验证通过：
@@ -123,7 +123,7 @@ doubaoInputSourceSelectable=true
 inputMonitoringPermission=false
 accessibilityPermission=false
 externalVoiceToolRunning=false
-switch-only-doubao-voice-input error: Input monitoring permission is missing
+rimedou error: Input monitoring permission is missing
 ```
 
 这是符合预期的失败：当前运行程序没有输入监听权限和辅助功能权限。
@@ -146,7 +146,7 @@ zsh scripts/build-app.sh
 脚本会在项目内生成：
 
 ```text
-dist/SwitchOnlyDoubaoVoiceInput.app
+dist/RimeDou.app
 ```
 
 该目录属于生成产物，已加入 `.gitignore`。打包脚本不安装全局依赖，不修改系统配置。
@@ -160,13 +160,13 @@ dist/SwitchOnlyDoubaoVoiceInput.app
 正式试用 App 路径：
 
 ```text
-/Applications/SwitchOnlyDoubaoVoiceInput.app
+/Applications/RimeDou.app
 ```
 
 当前已启动并常驻：
 
 ```text
-27958 /Applications/SwitchOnlyDoubaoVoiceInput.app/Contents/MacOS/SwitchOnlyDoubaoVoiceInput
+27958 /Applications/RimeDou.app/Contents/MacOS/RimeDou
 ```
 
 当前输入源检查：
@@ -208,7 +208,7 @@ externalVoiceToolRunning=false
 自动测试通过：
 
 ```bash
-env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache switch-only-doubao-voice-input-tests
+env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache rimedou-tests
 ```
 
 输出：
@@ -248,10 +248,10 @@ All tests passed
 
 实现文件：
 
-- `src/SwitchOnlyDoubaoVoiceInput/main.swift`
-- `src/SwitchOnlyDoubaoVoiceInputCore/AppRunner.swift`
-- `src/SwitchOnlyDoubaoVoiceInputCore/MenuBarPresentation.swift`
-- `tests/SwitchOnlyDoubaoVoiceInputTests/MenuBarPresentationTests.swift`
+- `src/RimeDou/main.swift`
+- `src/RimeDouCore/AppRunner.swift`
+- `src/RimeDouCore/MenuBarPresentation.swift`
+- `tests/RimeDouTests/MenuBarPresentationTests.swift`
 
 验证：
 
@@ -259,12 +259,12 @@ All tests passed
 All tests passed
 ```
 
-当前菜单栏版已覆盖到 `/Applications/SwitchOnlyDoubaoVoiceInput.app`。由于二进制变化且当前为 adhoc 签名，启动后 macOS 再次返回：
+当前菜单栏版已覆盖到 `/Applications/RimeDou.app`。由于二进制变化且当前为 adhoc 签名，启动后 macOS 再次返回：
 
 ```text
 inputMonitoringPermission=false
 accessibilityPermission=false
-switch-only-doubao-voice-input error: Input monitoring permission is missing
+rimedou error: Input monitoring permission is missing
 ```
 
 需要重新添加 `输入监控` 和 `辅助功能` 授权后再启动菜单栏版。
@@ -272,6 +272,6 @@ switch-only-doubao-voice-input error: Input monitoring permission is missing
 如果需要重新打包并覆盖 `/Applications`：
 
 1. 运行 `scripts/build-app.sh`。
-2. 停止当前 `SwitchOnlyDoubaoVoiceInput` 旧进程。用户已授权为了覆盖新版而停止旧进程，不需要重复询问同一问题。
-3. 用 `ditto dist/SwitchOnlyDoubaoVoiceInput.app /Applications/SwitchOnlyDoubaoVoiceInput.app` 覆盖。
+2. 停止当前 `RimeDou` 旧进程。用户已授权为了覆盖新版而停止旧进程，不需要重复询问同一问题。
+3. 用 `ditto dist/RimeDou.app /Applications/RimeDou.app` 覆盖。
 4. 因当前 App 是 adhoc 签名，覆盖二进制后 macOS 可能要求重新添加 `输入监控` 和 `辅助功能` 授权。

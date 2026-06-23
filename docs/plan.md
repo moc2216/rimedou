@@ -15,13 +15,13 @@
 拟创建：
 
 - `Package.swift`
-- `src/SwitchOnlyDoubaoVoiceInput/`
-- `tests/SwitchOnlyDoubaoVoiceInputTests/`
+- `src/RimeDou/`
+- `tests/RimeDouTests/`
 - `config/default.json`
 
 验证：
 
-- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache switch-only-doubao-voice-input-tests`
+- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache rimedou-tests`
 
 完成标准：
 
@@ -59,7 +59,7 @@
 
 验证：
 
-- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache switch-only-doubao-voice-input-tests`
+- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache rimedou-tests`
 
 完成标准：
 
@@ -88,7 +88,7 @@
 
 验证：
 
-- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache switch-only-doubao-voice-input-tests`
+- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache rimedou-tests`
 
 完成标准：
 
@@ -120,7 +120,7 @@
 
 验证：
 
-- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache switch-only-doubao-voice-input-tests`
+- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache rimedou-tests`
 - 手动运行开发命令确认能找到：
   - `im.rime.inputmethod.Squirrel.Hans`
   - `com.bytedance.inputmethod.doubaoime.pinyin`
@@ -151,7 +151,7 @@
 
 验证：
 
-- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache switch-only-doubao-voice-input-tests`
+- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache rimedou-tests`
 - 手动验证：
   - Type4Me 打开时检测为运行中。
   - Type4Me 退出时检测为未运行。
@@ -181,7 +181,7 @@
 
 验证：
 
-- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache switch-only-doubao-voice-input-tests`
+- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache rimedou-tests`
 - 手动运行开发版工具：
   - 左 Ctrl 不触发。
   - 右 Ctrl 触发。
@@ -214,7 +214,7 @@
 
 验证：
 
-- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache switch-only-doubao-voice-input-tests`
+- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache rimedou-tests`
 - 手动验证：
   - 右 Ctrl 后豆包语音是否启动。
   - 第二次右 Ctrl 后鼠须管是否恢复。
@@ -244,7 +244,7 @@
 
 验证：
 
-- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache switch-only-doubao-voice-input-tests`
+- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache rimedou-tests`
 - `swift run`
 
 完成标准：
@@ -273,7 +273,7 @@
 
 验证：
 
-- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache switch-only-doubao-voice-input-tests`
+- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache rimedou-tests`
 - 手动验收记录写入 `docs/review.md`
 
 完成标准：

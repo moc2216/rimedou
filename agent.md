@@ -88,7 +88,7 @@
 
 当前技术栈为 Swift Package Manager。当前本机只有 CommandLineTools，缺少 Swift `Testing` / `XCTest` 模块；因此第一版使用项目自带轻量测试 runner。实现阶段默认验证命令为：
 
-- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache switch-only-doubao-voice-input-tests`
+- `env CLANG_MODULE_CACHE_PATH=.build/module-cache XDG_CACHE_HOME=.build/xdg-cache swift run --disable-sandbox --cache-path .build/swiftpm-cache rimedou-tests`
 
 文档阶段仍需检查文档是否完整、互相一致。
 

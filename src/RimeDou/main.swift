@@ -1,11 +1,11 @@
-import SwitchOnlyDoubaoVoiceInputCore
+import RimeDouCore
 import AppKit
 import CoreFoundation
 import Foundation
 
 @main
 @MainActor
-struct SwitchOnlyDoubaoVoiceInputApp {
+struct RimeDouApp {
     static func main() {
         let arguments = CommandLine.arguments.dropFirst()
 
@@ -84,9 +84,9 @@ struct SwitchOnlyDoubaoVoiceInputApp {
                 return
             }
 
-            print("switch-only-doubao-voice-input: \(Scaffold.status)")
+            print("rimedou: \(Scaffold.status)")
         } catch {
-            print("switch-only-doubao-voice-input error: \(error)")
+            print("rimedou error: \(error)")
         }
     }
 
@@ -243,7 +243,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             try runner.run(shouldStartRunLoop: false)
             updateStatusMenu()
         } catch {
-            print("switch-only-doubao-voice-input error: \(error)")
+            print("rimedou error: \(error)")
             NSApplication.shared.terminate(nil)
         }
     }
@@ -296,7 +296,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             try runner?.togglePause()
         } catch {
-            print("switch-only-doubao-voice-input toggle error: \(error)")
+            print("rimedou toggle error: \(error)")
         }
 
         updateStatusMenu()
