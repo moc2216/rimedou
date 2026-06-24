@@ -2,42 +2,79 @@ import RimeDouCore
 
 enum HotkeyTests {
     static func run() {
-        testRightControlPressProducesRightControlEvent()
-        testLeftControlPressProducesLeftControlEvent()
+        testRightCommandPressProducesTriggerEvent()
+        testRightCommandReleaseDoesNotRepeatEvent()
+        testRightControlIsIgnoredWhenTriggerIsRightCommand()
         testOtherKeyProducesNoEvent()
-        testRightControlReleaseDoesNotRepeatEvent()
+        testSyntheticEventIsIgnored()
+        testAnyKeyDownStopsVoiceWhenActive()
+        testAnyKeyDownDoesNothingWhenIdle()
+        testAnyKeyDownIgnoredWhenSynthetic()
     }
 
-    private static func testRightControlPressProducesRightControlEvent() {
-        var parser = HotkeyEventParser()
+    private static func testRightCommandPressProducesTriggerEvent() {
+        var parser = HotkeyEventParser(triggerKeyCode: HotkeyKeyCode.rightCommand)
 
-        let event = parser.parseModifierChange(keyCode: HotkeyKeyCode.rightControl, isControlDown: true)
+        let event = parser.parse(keyCode: HotkeyKeyCode.rightCommand, isTriggerDown: true)
 
-        TestExpect.equal(event, .rightControlPressed, "right Ctrl press should produce right control event")
+        TestExpect.equal(event, .triggerKeyPressed, "right Cmd press should produce trigger event")
     }
 
-    private static func testLeftControlPressProducesLeftControlEvent() {
-        var parser = HotkeyEventParser()
+    private static func testRightCommandReleaseDoesNotRepeatEvent() {
+        var parser = HotkeyEventParser(triggerKeyCode: HotkeyKeyCode.rightCommand)
 
-        let event = parser.parseModifierChange(keyCode: HotkeyKeyCode.leftControl, isControlDown: true)
+        _ = parser.parse(keyCode: HotkeyKeyCode.rightCommand, isTriggerDown: true)
+        let event = parser.parse(keyCode: HotkeyKeyCode.rightCommand, isTriggerDown: false)
 
-        TestExpect.equal(event, .leftControlPressed, "left Ctrl press should produce left control event")
+        TestExpect.isNil(event, "right Cmd release should not repeat event")
+    }
+
+    private static func testRightControlIsIgnoredWhenTriggerIsRightCommand() {
+        var parser = HotkeyEventParser(triggerKeyCode: HotkeyKeyCode.rightCommand)
+
+        let event = parser.parse(keyCode: HotkeyKeyCode.rightControl, isTriggerDown: true)
+
+        TestExpect.isNil(event, "right Ctrl should be ignored when trigger is right Cmd (no collision)")
     }
 
     private static func testOtherKeyProducesNoEvent() {
-        var parser = HotkeyEventParser()
+        var parser = HotkeyEventParser(triggerKeyCode: HotkeyKeyCode.rightCommand)
 
-        let event = parser.parseModifierChange(keyCode: 0, isControlDown: true)
+        let event = parser.parse(keyCode: 0, isTriggerDown: true)
 
-        TestExpect.isNil(event, "non-control key should produce no event")
+        TestExpect.isNil(event, "non-trigger key should produce no event")
     }
 
-    private static func testRightControlReleaseDoesNotRepeatEvent() {
-        var parser = HotkeyEventParser()
+    private static func testSyntheticEventIsIgnored() {
+        var parser = HotkeyEventParser(triggerKeyCode: HotkeyKeyCode.rightCommand)
 
-        _ = parser.parseModifierChange(keyCode: HotkeyKeyCode.rightControl, isControlDown: true)
-        let event = parser.parseModifierChange(keyCode: HotkeyKeyCode.rightControl, isControlDown: false)
+        let event = parser.parse(keyCode: HotkeyKeyCode.rightCommand, isTriggerDown: true, isSynthetic: true)
 
-        TestExpect.isNil(event, "right Ctrl release should not repeat event")
+        TestExpect.isNil(event, "synthetic event should be ignored")
+    }
+
+    // 空格键码 = 49，代表“任意常规按键”。
+    private static func testAnyKeyDownStopsVoiceWhenActive() {
+        var parser = HotkeyEventParser(triggerKeyCode: HotkeyKeyCode.rightCommand)
+
+        let event = parser.parse(keyCode: 49, isTriggerDown: false, isVoiceActive: true, isKeyDownEvent: true)
+
+        TestExpect.equal(event, .anyKeyPressed, "any keyDown while voice active should produce anyKeyPressed")
+    }
+
+    private static func testAnyKeyDownDoesNothingWhenIdle() {
+        var parser = HotkeyEventParser(triggerKeyCode: HotkeyKeyCode.rightCommand)
+
+        let event = parser.parse(keyCode: 49, isTriggerDown: false, isVoiceActive: false, isKeyDownEvent: true)
+
+        TestExpect.isNil(event, "any keyDown while idle should produce no event")
+    }
+
+    private static func testAnyKeyDownIgnoredWhenSynthetic() {
+        var parser = HotkeyEventParser(triggerKeyCode: HotkeyKeyCode.rightCommand)
+
+        let event = parser.parse(keyCode: 49, isTriggerDown: false, isSynthetic: true, isVoiceActive: true, isKeyDownEvent: true)
+
+        TestExpect.isNil(event, "synthetic keyDown should be ignored")
     }
 }

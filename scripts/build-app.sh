@@ -24,6 +24,7 @@ env CLANG_MODULE_CACHE_PATH=.build/module-cache \
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp ".build/release/$PRODUCT_NAME" "$MACOS_DIR/$APP_NAME"
 cp "config/default.json" "$RESOURCES_DIR/default.json"
+cp "assets/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 
 cat > "$CONTENTS_DIR/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -34,6 +35,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
   <string>zh_CN</string>
   <key>CFBundleExecutable</key>
   <string>$APP_NAME</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundleIdentifier</key>
   <string>$BUNDLE_ID</string>
   <key>CFBundleInfoDictionaryVersion</key>
@@ -43,9 +46,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
+  <string>0.2.0</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>2</string>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>LSUIElement</key>
@@ -53,7 +56,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
   <key>NSAppleEventsUsageDescription</key>
   <string>用于与系统输入法和辅助功能事件协作。</string>
   <key>NSInputMonitoringUsageDescription</key>
-  <string>用于监听右 Ctrl，以便按豆包输入法的语音快捷键切换语音输入。</string>
+  <string>用于全局监听触发键（右 Command）与语音中的任意按键，以唤起或结束豆包语音输入。</string>
   <key>NSAccessibilityUsageDescription</key>
   <string>用于向豆包输入法发送右 Ctrl 语音快捷键。</string>
 </dict>

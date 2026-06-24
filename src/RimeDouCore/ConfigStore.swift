@@ -6,24 +6,39 @@ public struct AppConfig: Equatable {
     public let primaryInputSourceId: String
     public let doubaoInputSourceId: String
     public let doubaoVoiceHotkey: DoubaoVoiceHotkey
+    public let triggerKey: TriggerKey
 
     public init(
         externalVoiceAppPath: String,
         externalVoiceBundleId: String,
         primaryInputSourceId: String,
         doubaoInputSourceId: String,
-        doubaoVoiceHotkey: DoubaoVoiceHotkey = .rightControl
+        doubaoVoiceHotkey: DoubaoVoiceHotkey = .rightControl,
+        triggerKey: TriggerKey = .rightCommand
     ) {
         self.externalVoiceAppPath = externalVoiceAppPath
         self.externalVoiceBundleId = externalVoiceBundleId
         self.primaryInputSourceId = primaryInputSourceId
         self.doubaoInputSourceId = doubaoInputSourceId
         self.doubaoVoiceHotkey = doubaoVoiceHotkey
+        self.triggerKey = triggerKey
     }
 }
 
 public enum DoubaoVoiceHotkey: String, Equatable, Decodable {
     case rightControl
+}
+
+public enum TriggerKey: String, Equatable, Decodable {
+    case rightCommand
+    case rightControl
+
+    public var keyCode: Int64 {
+        switch self {
+        case .rightCommand: return HotkeyKeyCode.rightCommand
+        case .rightControl: return HotkeyKeyCode.rightControl
+        }
+    }
 }
 
 public enum ConfigError: Error, CustomStringConvertible, Equatable {
@@ -88,6 +103,7 @@ private struct RawAppConfig: Decodable {
     let primaryInputSourceId: String?
     let doubaoInputSourceId: String?
     let doubaoVoiceHotkey: String?
+    let triggerKey: String?
 
     func validate() throws -> AppConfig {
         guard let externalVoiceAppPath else {
@@ -109,12 +125,23 @@ private struct RawAppConfig: Decodable {
             throw ConfigError.unsupportedValue(field: "doubaoVoiceHotkey", value: doubaoVoiceHotkey)
         }
 
+        let parsedTriggerKey: TriggerKey
+        if let triggerKey {
+            guard let parsed = TriggerKey(rawValue: triggerKey) else {
+                throw ConfigError.unsupportedValue(field: "triggerKey", value: triggerKey)
+            }
+            parsedTriggerKey = parsed
+        } else {
+            parsedTriggerKey = .rightCommand
+        }
+
         return AppConfig(
             externalVoiceAppPath: externalVoiceAppPath,
             externalVoiceBundleId: externalVoiceBundleId,
             primaryInputSourceId: primaryInputSourceId,
             doubaoInputSourceId: doubaoInputSourceId,
-            doubaoVoiceHotkey: parsedDoubaoVoiceHotkey
+            doubaoVoiceHotkey: parsedDoubaoVoiceHotkey,
+            triggerKey: parsedTriggerKey
         )
     }
 }

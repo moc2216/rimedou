@@ -3,3 +3,5 @@
 DerivedData/
 dist/
 .DS_Store
+assets/AppIcon.iconset/
+.claude/

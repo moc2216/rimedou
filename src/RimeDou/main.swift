@@ -84,7 +84,17 @@ struct RimeDouApp {
                 return
             }
 
-            print("rimedou: \(Scaffold.status)")
+            print("""
+            rimedou: 用法
+              --run                            运行菜单栏工具
+              --check-input-sources            检查输入源
+              --check-external-voice-tool      检查外部语音工具
+              --check-hotkey-permission        检查输入监听权限
+              --check-voice-control-permission 检查辅助功能权限
+              --listen-hotkeys-once            监听一次触发键
+              --set-input-source <id>          切换输入源
+            详细说明见 README
+            """)
         } catch {
             print("rimedou error: \(error)")
         }
@@ -147,7 +157,8 @@ struct RimeDouApp {
     }
 
     private static func listenHotkeysOnce() throws {
-        let monitor = HotkeyMonitor { event in
+        let config = try ConfigStore().load(path: "config/default.json")
+        let monitor = HotkeyMonitor(triggerKey: config.triggerKey) { event in
             print("hotkeyEvent=\(event)")
             CFRunLoopStop(CFRunLoopGetCurrent())
         }

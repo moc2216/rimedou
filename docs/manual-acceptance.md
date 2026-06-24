@@ -2,7 +2,7 @@
 
 ## 结论
 
-当前代码和 App 包已经准备好。下一步必须由用户手动授予 macOS 权限，然后再验证右 Ctrl 行为。
+当前代码和 App 包已经准备好。下一步必须由用户手动授予 macOS 权限，然后再验证右 Cmd 触发与任意键结束。
 
 需要授权的 App：
 
@@ -12,8 +12,8 @@ dist/RimeDou.app
 
 需要授予的权限：
 
-- 输入监听：用于全局监听右 Ctrl。
-- 辅助功能：用于模拟右 Ctrl，触发或结束豆包语音。
+- 输入监听：用于全局监听触发键（右 Cmd）与语音中的任意键。
+- 辅助功能：用于模拟右 Ctrl 启动豆包语音。
 
 ## 授权前检查
 
@@ -103,7 +103,7 @@ Type4Me 运行时再次检查，期望：
 externalVoiceToolRunning=true
 ```
 
-## 右 Ctrl 监听检查
+## 右 Command 监听检查
 
 运行：
 
@@ -111,16 +111,16 @@ externalVoiceToolRunning=true
 dist/RimeDou.app/Contents/MacOS/RimeDou --listen-hotkeys-once
 ```
 
-按左 Ctrl：
+按其他修饰键（如左 Ctrl、右 Ctrl）：
 
-- 期望不输出 `rightControlPressed`。
+- 期望不输出 `triggerKeyPressed`。
 
-再次运行同一命令，按右 Ctrl：
+再次运行同一命令，按右 Command：
 
 - 期望输出：
 
 ```text
-hotkeyEvent=rightControlPressed
+hotkeyEvent=triggerKeyPressed
 ```
 
 ## 完整流程验收
@@ -134,16 +134,21 @@ dist/RimeDou.app/Contents/MacOS/RimeDou --run
 Type4Me 未运行时：
 
 1. 在普通输入框中确认当前输入法是鼠须管。
-2. 按右 Ctrl。
+2. 按右 Command。
 3. 期望切到豆包，并尝试触发豆包语音。
-4. 再按右 Ctrl。
+4. 再按右 Command。
 5. 期望恢复鼠须管。
+6. 连续多次按右 Command 触发语音，期望不再弹"语音唤起方式调整"（核心验收点）。
+7. 再次按右 Command 进入语音。
+8. 然后按任意键（如空格、回车）。
+9. 期望豆包语音停止，输入法恢复鼠须管（任意键结束，核心验收点）。
+10. 确认结束键没有在输入框多打出多余字符。
 
 Type4Me 运行时：
 
 1. 启动 Type4Me。
 2. 运行本工具。
-3. 按右 Ctrl。
+3. 按右 Command（触发键）。
 4. 期望本工具不切豆包，不恢复鼠须管，不干扰 Type4Me。
 
 ## 失败记录

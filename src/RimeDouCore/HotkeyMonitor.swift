@@ -18,20 +18,28 @@ public enum HotkeyMonitorError: Error, CustomStringConvertible, Equatable {
 public final class HotkeyMonitor {
     public typealias EventHandler = @Sendable (SwitchEvent) -> Void
     public typealias EventDelayProvider = @Sendable (SwitchEvent) -> TimeInterval
+    public typealias VoiceActiveProvider = @Sendable () -> Bool
 
     public static let defaultHotkeyDispatchDelaySeconds = 0.08
 
-    private var parser = HotkeyEventParser()
+    private let triggerKey: TriggerKey
+    private var parser: HotkeyEventParser
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private let eventHandler: EventHandler
     private let eventDelayProvider: EventDelayProvider
+    private let isVoiceActiveProvider: VoiceActiveProvider
 
     public init(
+        triggerKey: TriggerKey,
         eventDelayProvider: @escaping EventDelayProvider = { _ in HotkeyMonitor.defaultHotkeyDispatchDelaySeconds },
+        isVoiceActiveProvider: @escaping VoiceActiveProvider = { false },
         eventHandler: @escaping EventHandler
     ) {
+        self.triggerKey = triggerKey
+        self.parser = HotkeyEventParser(triggerKeyCode: triggerKey.keyCode)
         self.eventDelayProvider = eventDelayProvider
+        self.isVoiceActiveProvider = isVoiceActiveProvider
         self.eventHandler = eventHandler
     }
 
@@ -48,7 +56,7 @@ public final class HotkeyMonitor {
             throw HotkeyMonitorError.inputMonitoringPermissionMissing
         }
 
-        let eventMask = CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+        let eventMask = CGEventMask((1 << CGEventType.flagsChanged.rawValue) | (1 << CGEventType.keyDown.rawValue))
         let context = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
 
         guard let eventTap = CGEvent.tapCreate(
@@ -97,22 +105,29 @@ public final class HotkeyMonitor {
 
     private func handle(event: CGEvent) -> Unmanaged<CGEvent>? {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        let isControlDown = event.flags.contains(.maskControl)
         let isSynthetic = event.getIntegerValueField(.eventSourceUserData) == SyntheticEventTag.rightControl
+        let isTriggerDown = Self.isTriggerDown(event.flags, trigger: triggerKey)
+        let isKeyDownEvent = event.type == .keyDown
+        let isVoiceActive = isVoiceActiveProvider()
 
-        guard let result = parser.parseModifierChangeResult(
+        if let switchEvent = parser.parse(
             keyCode: keyCode,
-            isControlDown: isControlDown,
-            isSynthetic: isSynthetic
-        ) else {
-            return Unmanaged.passUnretained(event)
-        }
-
-        if let switchEvent = result.event {
+            isTriggerDown: isTriggerDown,
+            isSynthetic: isSynthetic,
+            isVoiceActive: isVoiceActive,
+            isKeyDownEvent: isKeyDownEvent
+        ) {
             dispatch(switchEvent)
         }
 
         return Unmanaged.passUnretained(event)
+    }
+
+    private static func isTriggerDown(_ flags: CGEventFlags, trigger: TriggerKey) -> Bool {
+        switch trigger {
+        case .rightCommand: return flags.contains(.maskCommand)
+        case .rightControl: return flags.contains(.maskControl)
+        }
     }
 
     private func dispatch(_ switchEvent: SwitchEvent) {

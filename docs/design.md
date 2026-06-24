@@ -13,6 +13,16 @@
 
 脚本方案适合验证单点能力，但不适合作为最终第一版。
 
+## 当前实现要点（以本节为准）
+
+> 下文 v0.1 原始章节以“右 Ctrl 作触发键”描述初版设计，触发/结束/弹窗相关已被本节及文末《触发键与语音键分离设计》《任意键结束语音设计》《合成按键停留修复》取代。
+
+- 触发键 = 右 Command（`triggerKey`，可配置）；语音键 = 右 Ctrl（工具合成，匹配豆包免按模式）。
+- 任意键结束：语音激活期间任意常规 `keyDown` → 豆包原生停语音 + 工具切回鼠须管。
+- 弹窗治理：合成右 Ctrl 的 keyDown→keyUp 间加 0.1s dwell（`synthesizedTapDwellSeconds`），规避豆包快速双击判定。
+- 状态：`idle / suspended / doubaoVoiceActive / error`；事件：`triggerKeyPressed / anyKeyPressed / externalVoiceToolStarted / externalVoiceToolStopped`。
+- 只开一个实例（终端 `--run` 与菜单栏 app 互斥，否则双实例各自合成右 Ctrl）。
+
 ## 本机已确认信息
 
 当前本机只读验证结果：
@@ -165,20 +175,18 @@
 
 事件：
 
+- `triggerKeyPressed`（用户按下触发键，默认右 Cmd）
+- `anyKeyPressed`（语音激活期间任意常规按键）
 - `externalVoiceToolStarted`
 - `externalVoiceToolStopped`
-- `rightControlPressed`
-- `leftControlPressed`
-- `inputSourceMissing`
-- `permissionMissing`
-- `switchFailed`
 
 主要规则：
 
-- `idle + rightControlPressed`：进入豆包语音流程。
-- `doubaoVoiceActive + rightControlPressed`：退出豆包语音流程并恢复鼠须管。
+- `idle + triggerKeyPressed`：切到豆包并合成 1 次右 Ctrl，进入 `doubaoVoiceActive`。
+- `doubaoVoiceActive + triggerKeyPressed`：恢复鼠须管，回到 `idle`。
+- `doubaoVoiceActive + anyKeyPressed`：恢复鼠须管，回到 `idle`（豆包原生停语音）。
 - 任意非错误状态 + `externalVoiceToolStarted`：进入 `suspended`。
-- `suspended + rightControlPressed`：不做任何豆包相关动作。
+- `suspended + triggerKeyPressed`：不做任何豆包相关动作。
 - `suspended + externalVoiceToolStopped`：回到 `idle`。
 - 任意状态 + 严重错误：进入 `error`。
 
@@ -297,3 +305,63 @@ TDD 第一层不碰真实 macOS API，先测纯逻辑：
 - macOS 权限提示和事件监听在开发运行、打包运行时可能表现不同。
 - Type4Me 是否运行应优先用 bundle id 检测，单靠路径不足。
 - 如果豆包拦截右 Ctrl 的时机和本工具冲突，可能需要调整事件监听策略。
+
+## 触发键与语音键分离设计
+
+### 决策
+把"用户按的触发键"和"工具发给豆包的语音键"拆成两个独立配置项：
+- `triggerKey`（默认右 Cmd）= 监听对象。
+- `doubaoVoiceHotkey`（右 Ctrl）= 合成对象，匹配豆包免按模式。
+
+这样豆包从头到尾只看到工具合成的 1 个右 Ctrl，不再有“真按 + 假按”的快速双击。
+
+> ⚠️ 真机验收更正：仅做触发键分离**并不能**消除弹窗——单实例下每次启动语音仍必弹。弹窗的真正成因是合成右 Ctrl 的“零停留”，修复见下节《合成按键停留修复》。触发键分离仍保留，因为它本身更干净，且避免右 Ctrl 监听与豆包语音键混淆。
+
+### 改动点
+- `AppConfig` 增 `triggerKey: TriggerKey`；`TriggerKey` 枚举提供 `keyCode`（右 Cmd = 54）与按下判断（`.maskCommand`）。
+- `HotkeyEventParser` 改为只监听 `triggerKey`：按下沿产生 `.triggerKeyPressed`；其他修饰键（含右 Ctrl、左 Cmd）一律忽略。
+- `SwitchEvent`：`.rightControlPressed` 改名 `.triggerKeyPressed`；移除 `.leftControlPressed`（左 Ctrl 不再特殊）。
+- `HotkeyMonitor` 以 `triggerKey` 构造。
+- 合成右 Ctrl 的 `DoubaoVoiceController` 不变。
+- 进入/退出延时结构暂保留（原为右 Ctrl 隔离设计，对右 Cmd 无害但多余；后续可简化）。
+
+### 待真机验收
+- 右 Cmd 触发后豆包语音是否稳定启动。（已验：稳定。）
+- 连续触发是否仍弹“语音唤起方式调整”。（已验：触发键分离后仍弹；最终由《合成按键停留修复》解决。）
+- 退出（第二次右 Cmd / 任意键）是否稳定恢复鼠须管。（已验：稳定。）
+
+## 合成按键停留修复（dwell）
+
+### 真正根因
+工具合成的右 Ctrl 原本是 `keyDown.post` 紧接 `keyUp.post`、停留≈0。豆包把这个零停留的瞬按判成快速/双击右 Ctrl，于是弹“语音唤起方式调整”。这与用户早已总结的规律一致：原生慢按右 Ctrl 不弹、快速双击才弹。单实例下每次启动语音都必弹，与实例数无关（多实例会叠加恶化：每个进程各合成一次右 Ctrl，也构成双击）。
+
+### 修复
+`RightControlKeyEventPoster.postKeyTap`：`keyDown.post` 之后 `Thread.sleep(synthesizedTapDwellSeconds = 0.1s)`，**再创建并 `post` keyUp**。关键点是 keyUp 在 sleep 之后才创建，确保其时间戳真正晚于 keyDown——无论豆包按“到达时间”还是“事件时间戳”计算停留，都能看到一次有停留的“慢按”。
+
+### 真机结论
+加 0.1s 停留后，多轮测试不再出现弹窗。若偶发可调大常量。
+
+### 调试教训
+- “弹窗 = 触发键双击”是错结论；真因是合成键零停留。
+- 终端 `--run` 与菜单栏 app 同时运行 = 多实例 = 多次合成右 Ctrl，会制造假阳性弹窗。调试与使用时务必只开一个实例（`pgrep -fl RimeDou` 确认）。
+
+## 任意键结束语音设计
+
+### 决策
+利用豆包原生“任意键停止语音”能力。工具无需合成停止键，只需在 `doubaoVoiceActive` 监听任意常规 `keyDown` → 切回鼠须管；豆包自身会在该按键时停语音。
+
+### 改动点
+- `SwitchEvent` 增 `.anyKeyPressed`（无关联值，沿用编译器合成的 `Equatable`）。
+- `SwitchCoordinator`：`.anyKeyPressed` 在 `doubaoVoiceActive` 下走 `exitDoubaoVoice`（与第二次触发键同路径），其他状态忽略。
+- `HotkeyEventParser.parse` 增 `isVoiceActive`、`isKeyDownEvent` 参数：合成事件先忽略；`isKeyDownEvent && isVoiceActive` → 返回 `.anyKeyPressed`；触发键沿逻辑不变（触发键是修饰键，走 `flagsChanged`，不会进入此分支）。
+- `HotkeyMonitor`：event mask 增 `keyDown`；新增 `isVoiceActiveProvider`（`@Sendable`）。`handle` 计算 `event.type == .keyDown` 与当前是否激活，一并交给 parser；只在语音激活时才把 `keyDown` 上报为 `.anyKeyPressed`，避免空闲时每个按键都派发并打日志。
+- `AppRunner`：接 `isVoiceActiveProvider`（读 `HotkeyRuntimeState`）；把 `.anyKeyPressed` 的派发延迟设为 0（即时切换）；`HotkeyRuntimeState.shouldHandleTriggerImmediately` 改名 `isVoiceActive`（同一标志，触发键延迟判断与任意键过滤两处复用）。
+
+### 关键点与时序
+- event tap 为 `listen-only`，结束键必然透传，且在主队列异步切换之前就已送达应用。此时豆包仍是当前输入法，由豆包自行停语音，体验等同原生；工具随后切回鼠须管，因此“结束键多打一个字”基本不会发生。
+- 用 `isVoiceActiveProvider` 在源头过滤，避免空闲时日志噪声与每键派发。
+- 连发安全：第一个 `.anyKeyPressed` 退出后 `isVoiceActive` 变假，后续 `keyDown` 被过滤；即使存在竞争，coordinator 对非激活态的 `.anyKeyPressed` 也是 no-op。
+
+### 待真机验收
+- 任意键结束是否稳定恢复鼠须管。
+- 结束键是否多打出多余字符。

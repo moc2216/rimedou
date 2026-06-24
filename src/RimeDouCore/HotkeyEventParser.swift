@@ -1,57 +1,41 @@
 public enum HotkeyKeyCode {
     public static let leftControl: Int64 = 59
     public static let rightControl: Int64 = 62
-}
-
-public struct HotkeyParseResult: Equatable {
-    public let event: SwitchEvent?
-
-    public init(event: SwitchEvent?) {
-        self.event = event
-    }
+    public static let rightCommand: Int64 = 54
 }
 
 public struct HotkeyEventParser {
-    private var pressedControlKeyCodes: Set<Int64> = []
+    private let triggerKeyCode: Int64
+    private var triggerKeyDown = false
 
-    public init() {}
-
-    public mutating func parseModifierChange(
-        keyCode: Int64,
-        isControlDown: Bool,
-        isSynthetic: Bool = false
-    ) -> SwitchEvent? {
-        parseModifierChangeResult(
-            keyCode: keyCode,
-            isControlDown: isControlDown,
-            isSynthetic: isSynthetic
-        )?.event
+    public init(triggerKeyCode: Int64) {
+        self.triggerKeyCode = triggerKeyCode
     }
 
-    public mutating func parseModifierChangeResult(
-        keyCode: Int64,
-        isControlDown: Bool,
-        isSynthetic: Bool = false
-    ) -> HotkeyParseResult? {
+    public mutating func parse(keyCode: Int64, isTriggerDown: Bool, isSynthetic: Bool = false, isVoiceActive: Bool = false, isKeyDownEvent: Bool = false) -> SwitchEvent? {
         if isSynthetic {
             return nil
         }
 
-        guard keyCode == HotkeyKeyCode.leftControl || keyCode == HotkeyKeyCode.rightControl else {
+        // 语音激活期间，任意常规按键（keyDown）都视为“结束语音”。
+        // 豆包原生会在该按键时自行停止语音，工具只需切回主输入法。
+        if isKeyDownEvent && isVoiceActive {
+            return .anyKeyPressed
+        }
+
+        guard keyCode == triggerKeyCode else {
             return nil
         }
 
-        if isControlDown && !pressedControlKeyCodes.contains(keyCode) {
-            pressedControlKeyCodes.insert(keyCode)
-            let event: SwitchEvent = keyCode == HotkeyKeyCode.rightControl ? .rightControlPressed : .leftControlPressed
-            return HotkeyParseResult(event: event)
+        if isTriggerDown && !triggerKeyDown {
+            triggerKeyDown = true
+            return .triggerKeyPressed
         }
 
-        if !isControlDown {
-            pressedControlKeyCodes.remove(keyCode)
-            return HotkeyParseResult(event: nil)
+        if !isTriggerDown {
+            triggerKeyDown = false
         }
 
-        return HotkeyParseResult(event: nil)
+        return nil
     }
 }
