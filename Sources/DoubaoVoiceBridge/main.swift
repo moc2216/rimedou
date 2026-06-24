@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 AppKit/ApplicationServices/Carbon 的菜单栏、权限、事件 tap 与焦点控制能力，依赖 DoubaoVoiceBridgeCore 的配置、状态机、输入法与版本策略
+ * [OUTPUT]: 对外提供 DoubaoVoiceBridge 菜单栏进程入口和本地按住说话桥接流程
+ * [POS]: Sources/DoubaoVoiceBridge 的唯一可执行入口，编排权限、LaunchAgent、输入法切换、豆包语音触发与恢复
+ * [PROTOCOL]: 变更时更新此头部，然后检查 codex.md
+ */
 import AppKit
 import ApplicationServices
 import Carbon
@@ -13,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var config = BridgeConfig.loadFromDefaultLocation()
     private let logger = AppLogger()
     private let inputSources = InputSourceController()
+    private let doubaoVersionDetector = DoubaoImeVersionDetector()
+    private var voiceStrategy: DoubaoImeVoiceStrategy = .holdHotkey
     private var voiceHotkeySender: HotkeySender
     private let focusBouncer = FocusBouncer()
     private lazy var launchAgent = LaunchAgentManager(label: launchAgentLabel, logger: logger)
@@ -39,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         installMenu()
+        refreshDoubaoVoiceStrategy(reason: "startup")
         gateStartupOnPermissions()
         logger.log("app launched")
     }
@@ -123,6 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         config = BridgeConfig.loadFromDefaultLocation()
         voiceHotkeySender = HotkeySender(hotkey: config.voiceHotkey)
+        refreshDoubaoVoiceStrategy(reason: "config reload")
         logger.log(
             "config reloaded: triggerHotkey=\(hotkeyDescription(config.triggerHotkey)) voiceHotkey=\(hotkeyDescription(config.voiceHotkey)) triggerHoldDelay=\(config.triggerHoldDelay) postSwitchSettleDelay=\(config.postSwitchSettleDelay)"
         )
@@ -397,6 +407,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         logger.log("cancel pending trigger hold: \(reason)")
     }
 
+    private func refreshDoubaoVoiceStrategy(reason: String) {
+        let version = doubaoVersionDetector.installedVersionString()
+        voiceStrategy = DoubaoImeVoiceStrategy.resolve(versionString: version)
+        logger.log(
+            "doubao ime strategy refreshed: reason=\(reason) version=\(version ?? "unknown") strategy=\(voiceStrategy.logName)"
+        )
+    }
+
     private func hotkeyIsDown(_ hotkey: BridgeHotkey, event: CGEvent) -> Bool {
         hotkey.keys.allSatisfy { key in
             if key.isModifier {
@@ -449,9 +467,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     backDelay: self.config.focusBounceBackDelay,
                     settleDelay: self.config.focusBounceSettleDelay
                 ) { [weak self] in
-                    self?.startOptionWarmupIfCurrent(currentSession)
+                    self?.startVoiceTriggerIfCurrent(currentSession)
                 }
             }
+        }
+    }
+
+    private func startVoiceTriggerIfCurrent(_ currentSession: UUID) {
+        switch voiceStrategy {
+        case .holdHotkey:
+            startOptionWarmupIfCurrent(currentSession)
+        case .tapHotkey:
+            tapVoiceHotkeyIfCurrent(currentSession)
         }
     }
 
@@ -471,6 +498,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.voiceHotkeyIsDown = true
                 self.machine.handle(.optionHoldStarted)
             }
+        }
+    }
+
+    private func tapVoiceHotkeyIfCurrent(_ currentSession: UUID) {
+        guard sessionID == currentSession, triggerHotkeyDown else {
+            return
+        }
+        logger.log("voice hotkey single tap for doubao免按模式")
+        voiceHotkeySender.down()
+        DispatchQueue.main.asyncAfter(deadline: .now() + config.optionWarmupTapDuration) { [weak self] in
+            guard let self, self.sessionID == currentSession else { return }
+            self.voiceHotkeySender.up()
+            self.machine.handle(.tapVoiceTriggerSent)
         }
     }
 
@@ -525,6 +565,17 @@ private let leftOptionMask: UInt64 = 0x20
 private let rightOptionMask: UInt64 = 0x40
 private let leftCommandMask: UInt64 = 0x8
 private let rightCommandMask: UInt64 = 0x10
+
+private extension DoubaoImeVoiceStrategy {
+    var logName: String {
+        switch self {
+        case .holdHotkey:
+            return "holdHotkey"
+        case .tapHotkey:
+            return "tapHotkey"
+        }
+    }
+}
 
 private func modifierIsDown(_ key: BridgeKey, flags: CGEventFlags) -> Bool {
     switch key {
