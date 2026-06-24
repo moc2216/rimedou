@@ -5,8 +5,8 @@
 本项目用于开发一个 macOS 输入法切换工具：
 
 - 日常输入默认使用鼠须管（Rime / Squirrel）输入 86 五笔。
-- 偶尔按右 Ctrl 唤醒豆包输入法的语音输入。
-- 再次按右 Ctrl 结束语音输入后，自动恢复输入状态到鼠须管。
+- 偶尔按右 Command（可配置触发键）唤醒豆包输入法的语音输入。
+- 语音中按任意键结束后，自动恢复输入状态到鼠须管。
 - 目标是只借用豆包语音输入能力，不把豆包作为日常键盘输入法。
 
 ## 工作原则
@@ -39,7 +39,7 @@
 - `src/`：项目源码。
 - `tests/`：自动化测试。
 - `scripts/`：本项目内使用的辅助脚本。
-- `fixtures/`：测试夹具或示例数据。
+- `assets/`：图标等交付资源。
 
 目录创建规则：
 
@@ -55,8 +55,9 @@
 - `docs/requirements.md`：需求澄清结果。
 - `docs/spec.md`：可验收的功能规格。
 - `docs/design.md`：技术设计。
-- `docs/plan.md`：实施计划和任务拆分。
-- `docs/review.md`：阶段审查记录。
+- `docs/manual-acceptance.md`：手动验收步骤。
+- `docs/versioning.md`：版本管理记录。
+- `docs/related-projects.md`：相关项目调研。
 
 文档命名规则：
 

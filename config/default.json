@@ -3,5 +3,6 @@
   "externalVoiceBundleId": "com.type4me.app",
   "primaryInputSourceId": "im.rime.inputmethod.Squirrel.Hans",
   "doubaoInputSourceId": "com.bytedance.inputmethod.doubaoime.pinyin",
-  "doubaoVoiceHotkey": "rightControl"
+  "doubaoVoiceHotkey": "rightControl",
+  "triggerKey": "rightCommand"
 }

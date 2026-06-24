@@ -5,11 +5,11 @@
 这是一个 macOS 菜单栏小工具。它适合这样的使用方式：
 
 - 平时使用鼠须管（Rime / Squirrel）输入中文，例如 86 五笔。
-- 偶尔按右 Ctrl 唤醒豆包输入法的语音输入。
-- 语音结束后再次按右 Ctrl，工具会尽力把输入法恢复到鼠须管。
-- 如果另一个语音输入工具 Type4Me 正在运行，本工具会让渡右 Ctrl，不触发豆包语音。
+- 偶尔按右 Command 唤醒豆包输入法的语音输入。
+- 语音结束后按任意键（如空格、回车），豆包自行停止语音，工具会把输入法恢复到鼠须管。
+- 如果另一个语音输入工具 Type4Me 正在运行，本工具会让渡右 Command，不触发豆包语音。
 
-当前版本：`v0.1-trial`
+当前版本：`v0.2`
 
 ## 当前状态
 
@@ -18,16 +18,15 @@
 已实现：
 
 - macOS 菜单栏 app。
-- 右 Ctrl 监听。
+- 右 Command 监听（触发键可配置，默认右 Command）。
 - 切换到豆包输入法并触发豆包语音。
-- 语音结束后恢复鼠须管。
+- 语音中按任意键结束，自动恢复鼠须管。
 - Type4Me 运行时自动让渡。
 - 菜单栏暂停、启用、恢复鼠须管、退出。
 
 仍在观察：
 
-- 连续多次语音后，豆包输入法偶尔可能停留为当前输入法。
-- 豆包自身可能弹出“语音唤起方式调整”提示。
+- 连续多次语音后，豆包输入法偶尔可能停留为当前输入法（空闲守护会尝试拉回鼠须管）。
 - 本地构建版使用 ad-hoc 签名，替换新版 app 后 macOS 可能要求重新授权。
 
 ## 使用前提
@@ -115,6 +114,17 @@ ditto dist/RimeDou.app /Applications/RimeDou.app
 open /Applications/RimeDou.app
 ```
 
+## 图标
+
+App 图标是单色“豆”字标（浅色 tile + 深色字），经典耐看、亮暗模式皆宜。图源由脚本生成，最终产物为 `assets/AppIcon.icns`，由 `scripts/build-app.sh` 打进 bundle。
+
+重新生成图标（例如换成 `mono-dark`、或改 `scripts/make-icon.swift` 里的配色）：
+
+```bash
+./scripts/build-icon.sh mono-light   # 或 mono-dark
+./scripts/build-app.sh               # 重建 app 带新图标
+```
+
 ## 打包给普通用户
 
 开发者可以生成发布 zip：
@@ -136,7 +146,7 @@ dist/RimeDou-v0.1.0.zip
 - README 已说明当前是试用版。
 - zip 内 app 能打开。
 - app 首次运行时能出现在权限列表中。
-- 授权后右 Ctrl 主路径能工作。
+- 授权后右 Cmd 主路径能工作。
 - 没有 `.env`、token、密钥或私人信息进入仓库。
 
 ## 配置
@@ -155,7 +165,8 @@ config/default.json
   "externalVoiceBundleId": "com.type4me.app",
   "primaryInputSourceId": "im.rime.inputmethod.Squirrel.Hans",
   "doubaoInputSourceId": "com.bytedance.inputmethod.doubaoime.pinyin",
-  "doubaoVoiceHotkey": "rightControl"
+  "doubaoVoiceHotkey": "rightControl",
+  "triggerKey": "rightCommand"
 }
 ```
 
@@ -165,7 +176,8 @@ config/default.json
 - `externalVoiceBundleId`：外部语音工具 bundle id，用于判断是否正在运行。
 - `primaryInputSourceId`：语音结束后要恢复的主输入法。
 - `doubaoInputSourceId`：豆包输入法的输入源 ID。
-- `doubaoVoiceHotkey`：必须与豆包语音输入的免按模式快捷键一致。
+- `triggerKey`：用户按下、用来唤起/结束语音的触发键，默认 `rightCommand`（右 Command）。它与 `doubaoVoiceHotkey` 刻意设成不同的键，避免豆包把"真按 + 工具假按"当成快速双击而弹"语音唤起方式调整"。
+- `doubaoVoiceHotkey`：豆包"免按模式"的快捷键，工具会模拟它启动语音；必须与你豆包设置中的快捷键一致（当前为右 Ctrl）。
 
 ## 菜单栏操作
 
@@ -173,25 +185,26 @@ config/default.json
 
 菜单项：
 
-- `暂停`：停止监听右 Ctrl，并尽力恢复鼠须管。
+- `暂停`：停止监听触发键（右 Cmd），并尽力恢复鼠须管。
 - `启用`：重新启用监听。
 - `恢复鼠须管`：手动拉回鼠须管。
 - `退出`：关闭本工具。
 
 ## 版本
 
-- `v0.1-trial`：第一版可试用基线。
+- `v0.1-trial`：第一版可试用基线（右 Ctrl 触发）。
+- `v0.2`（当前）：触发键改为右 Command 并与豆包语音键分离；任意键结束语音；合成右 Ctrl 加 dwell 修复“语音唤起方式调整”弹窗；加入 app 图标。
 
 后续计划：
 
-- `v0.2-focus-bounce`：加入可配置焦点回弹，改善连续触发稳定性。
-- `v0.3-usage-polish`：改善日志、配置入口、权限提示和日常启动/退出体验。
+- 焦点回弹（可配置），改善连续触发稳定性。
+- 日志、配置入口、权限提示和日常启动/退出体验打磨。
 
 更多记录见 `docs/versioning.md`。
 
 ## 已知限制
 
-- 当前只支持右 Ctrl 作为豆包语音快捷键。
+- 当前触发键（`triggerKey`）只支持 `rightCommand`/`rightControl`，默认右 Command；豆包语音快捷键（`doubaoVoiceHotkey`）只支持右 Ctrl。
 - 当前默认恢复鼠须管简体输入源。
 - 当前没有 Apple Developer ID 签名和 notarization 公证。
 - 当前没有自动安装 LaunchAgent；退出后不会自动重启。

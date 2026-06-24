@@ -45,10 +45,6 @@ public final class SystemSwitchServices: SwitchCoordinatingServices {
         doubaoVoiceController.startVoiceInput()
     }
 
-    public func stopDoubaoVoiceIfPossible() -> Bool {
-        doubaoVoiceController.stopVoiceInputIfPossible()
-    }
-
     private func waitUntilCurrentInputSource(id expectedInputSourceId: String) -> Bool {
         let deadline = Date().addingTimeInterval(1.2)
 

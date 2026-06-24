@@ -4,15 +4,17 @@ import Foundation
 @main
 struct TestRunner {
     static func main() {
-        testScaffoldIsReady()
-        testRightControlStartsDoubaoVoiceWhenIdle()
-        testLeftControlDoesNothingWhenIdle()
-        testRightControlStopsDoubaoVoiceAndRestoresPrimaryInput()
-        testRightControlDoesNothingWhenExternalVoiceToolIsRunning()
-        testRightControlWorksAfterExternalVoiceToolStops()
+        testTriggerStartsDoubaoVoiceWhenIdle()
+        testTriggerStopsDoubaoVoiceAndRestoresPrimaryInput()
+        testAnyKeyStopsDoubaoVoiceWhenActive()
+        testAnyKeyDoesNothingWhenIdle()
+        testTriggerDoesNothingWhenExternalVoiceToolIsRunning()
+        testTriggerWorksAfterExternalVoiceToolStops()
         testDoubaoSwitchFailureMovesToError()
         testPrimaryRestoreFailureMovesToError()
         testLoadsDefaultConfig()
+        testTriggerKeyDefaultsToRightCommandWhenAbsent()
+        testInvalidTriggerKeyFailsClearly()
         testMissingConfigFieldFailsClearly()
         testDefaultInputSourcesExistOnThisMac()
         testPrimaryInputSourceIsSelectableOnThisMac()
@@ -29,63 +31,71 @@ struct TestRunner {
         print("All tests passed")
     }
 
-    private static func testScaffoldIsReady() {
-        expect(Scaffold.status == "scaffold ready", "scaffold status should be ready")
-    }
-
-    private static func testRightControlStartsDoubaoVoiceWhenIdle() {
+    private static func testTriggerStartsDoubaoVoiceWhenIdle() {
         let services = FakeServices()
         var coordinator = SwitchCoordinator(services: services)
 
-        coordinator.handle(.rightControlPressed)
+        coordinator.handle(.triggerKeyPressed)
 
-        expect(coordinator.state == .doubaoVoiceActive, "right Ctrl should enter doubao voice state")
-        expect(services.actions == [.switchToDoubao, .startDoubaoVoice], "right Ctrl should switch to doubao and start voice")
+        expect(coordinator.state == .doubaoVoiceActive, "trigger should enter doubao voice state")
+        expect(services.actions == [.switchToDoubao, .startDoubaoVoice], "trigger should switch to doubao and start voice")
     }
 
-    private static func testLeftControlDoesNothingWhenIdle() {
+    private static func testTriggerStopsDoubaoVoiceAndRestoresPrimaryInput() {
         let services = FakeServices()
         var coordinator = SwitchCoordinator(services: services)
 
-        coordinator.handle(.leftControlPressed)
-
-        expect(coordinator.state == .idle, "left Ctrl should keep idle state")
-        expect(services.actions.isEmpty, "left Ctrl should not trigger any action")
-    }
-
-    private static func testRightControlStopsDoubaoVoiceAndRestoresPrimaryInput() {
-        let services = FakeServices()
-        var coordinator = SwitchCoordinator(services: services)
-
-        coordinator.handle(.rightControlPressed)
+        coordinator.handle(.triggerKeyPressed)
         services.actions.removeAll()
-        coordinator.handle(.rightControlPressed)
+        coordinator.handle(.triggerKeyPressed)
 
-        expect(coordinator.state == .idle, "second right Ctrl should return to idle")
-        expect(services.actions == [.switchToPrimary], "second right Ctrl should restore primary input without canceling pending Doubao commit")
+        expect(coordinator.state == .idle, "second trigger should return to idle")
+        expect(services.actions == [.switchToPrimary], "second trigger should restore primary input without canceling pending Doubao commit")
     }
 
-    private static func testRightControlDoesNothingWhenExternalVoiceToolIsRunning() {
+    private static func testAnyKeyStopsDoubaoVoiceWhenActive() {
+        let services = FakeServices()
+        var coordinator = SwitchCoordinator(services: services)
+
+        coordinator.handle(.triggerKeyPressed)
+        services.actions.removeAll()
+        coordinator.handle(.anyKeyPressed)
+
+        expect(coordinator.state == .idle, "any key while voice active should return to idle")
+        expect(services.actions == [.switchToPrimary], "any key while voice active should restore primary input")
+    }
+
+    private static func testAnyKeyDoesNothingWhenIdle() {
+        let services = FakeServices()
+        var coordinator = SwitchCoordinator(services: services)
+
+        coordinator.handle(.anyKeyPressed)
+
+        expect(coordinator.state == .idle, "any key while idle should not start voice")
+        expect(services.actions.isEmpty, "any key while idle should trigger no actions")
+    }
+
+    private static func testTriggerDoesNothingWhenExternalVoiceToolIsRunning() {
         let services = FakeServices()
         var coordinator = SwitchCoordinator(services: services)
 
         coordinator.handle(.externalVoiceToolStarted)
-        coordinator.handle(.rightControlPressed)
+        coordinator.handle(.triggerKeyPressed)
 
         expect(coordinator.state == .suspended, "external voice tool should suspend coordinator")
         expect(services.actions.isEmpty, "suspended state should not trigger doubao actions")
     }
 
-    private static func testRightControlWorksAfterExternalVoiceToolStops() {
+    private static func testTriggerWorksAfterExternalVoiceToolStops() {
         let services = FakeServices()
         var coordinator = SwitchCoordinator(services: services)
 
         coordinator.handle(.externalVoiceToolStarted)
         coordinator.handle(.externalVoiceToolStopped)
-        coordinator.handle(.rightControlPressed)
+        coordinator.handle(.triggerKeyPressed)
 
-        expect(coordinator.state == .doubaoVoiceActive, "right Ctrl should work after external voice tool stops")
-        expect(services.actions == [.switchToDoubao, .startDoubaoVoice], "right Ctrl should trigger doubao after suspension ends")
+        expect(coordinator.state == .doubaoVoiceActive, "trigger should work after external voice tool stops")
+        expect(services.actions == [.switchToDoubao, .startDoubaoVoice], "trigger should trigger doubao after suspension ends")
     }
 
     private static func testDoubaoSwitchFailureMovesToError() {
@@ -93,7 +103,7 @@ struct TestRunner {
         services.failSwitchToDoubao = true
         var coordinator = SwitchCoordinator(services: services)
 
-        coordinator.handle(.rightControlPressed)
+        coordinator.handle(.triggerKeyPressed)
 
         expect(coordinator.state == .error, "doubao switch failure should move to error")
         expect(services.actions == [.switchToDoubao], "doubao switch failure should stop following actions")
@@ -103,10 +113,10 @@ struct TestRunner {
         let services = FakeServices()
         var coordinator = SwitchCoordinator(services: services)
 
-        coordinator.handle(.rightControlPressed)
+        coordinator.handle(.triggerKeyPressed)
         services.actions.removeAll()
         services.failSwitchToPrimary = true
-        coordinator.handle(.rightControlPressed)
+        coordinator.handle(.triggerKeyPressed)
 
         expect(coordinator.state == .error, "primary restore failure should move to error")
         expect(services.actions == [.switchToPrimary], "primary restore failure should be visible in action order")
@@ -122,6 +132,52 @@ struct TestRunner {
         expect(config.primaryInputSourceId == "im.rime.inputmethod.Squirrel.Hans", "default primary input source should match")
         expect(config.doubaoInputSourceId == "com.bytedance.inputmethod.doubaoime.pinyin", "default doubao input source should match")
         expect(config.doubaoVoiceHotkey == .rightControl, "default doubao voice hotkey should match Doubao settings")
+        expect(config.triggerKey == .rightCommand, "default trigger key should be right command")
+    }
+
+    private static func testTriggerKeyDefaultsToRightCommandWhenAbsent() {
+        let path = ".build/test-trigger-key-absent.json"
+        let configWithoutTriggerKey = """
+        {
+          "externalVoiceAppPath": "/Applications/Type4Me.app",
+          "externalVoiceBundleId": "com.type4me.app",
+          "primaryInputSourceId": "im.rime.inputmethod.Squirrel.Hans",
+          "doubaoInputSourceId": "com.bytedance.inputmethod.doubaoime.pinyin",
+          "doubaoVoiceHotkey": "rightControl"
+        }
+        """
+
+        expectNoThrow("trigger key absent fixture should be writable") {
+            try configWithoutTriggerKey.write(toFile: path, atomically: true, encoding: .utf8)
+        }
+
+        let config = expectNoThrow("config without triggerKey should load") {
+            try ConfigStore().load(path: path)
+        }
+
+        expect(config.triggerKey == .rightCommand, "absent triggerKey should default to right command")
+    }
+
+    private static func testInvalidTriggerKeyFailsClearly() {
+        let path = ".build/test-invalid-trigger-key.json"
+        let configWithInvalidTriggerKey = """
+        {
+          "externalVoiceAppPath": "/Applications/Type4Me.app",
+          "externalVoiceBundleId": "com.type4me.app",
+          "primaryInputSourceId": "im.rime.inputmethod.Squirrel.Hans",
+          "doubaoInputSourceId": "com.bytedance.inputmethod.doubaoime.pinyin",
+          "doubaoVoiceHotkey": "rightControl",
+          "triggerKey": "banana"
+        }
+        """
+
+        expectNoThrow("invalid trigger key fixture should be writable") {
+            try configWithInvalidTriggerKey.write(toFile: path, atomically: true, encoding: .utf8)
+        }
+
+        expectThrows("invalid triggerKey should fail clearly") {
+            _ = try ConfigStore().load(path: path)
+        }
     }
 
     private static func testMissingConfigFieldFailsClearly() {
@@ -275,11 +331,6 @@ private final class FakeServices: SwitchCoordinatingServices {
 
     func startDoubaoVoice() -> Bool {
         actions.append(.startDoubaoVoice)
-        return true
-    }
-
-    func stopDoubaoVoiceIfPossible() -> Bool {
-        actions.append(.stopDoubaoVoice)
         return true
     }
 

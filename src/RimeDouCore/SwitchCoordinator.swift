@@ -6,8 +6,8 @@ public enum SwitchState: Equatable {
 }
 
 public enum SwitchEvent: Sendable {
-    case rightControlPressed
-    case leftControlPressed
+    case triggerKeyPressed
+    case anyKeyPressed
     case externalVoiceToolStarted
     case externalVoiceToolStopped
 }
@@ -15,7 +15,6 @@ public enum SwitchEvent: Sendable {
 public enum SwitchAction: Equatable {
     case switchToDoubao
     case startDoubaoVoice
-    case stopDoubaoVoice
     case switchToPrimary
 }
 
@@ -23,7 +22,6 @@ public protocol SwitchCoordinatingServices: AnyObject {
     func switchToDoubao() -> Bool
     func switchToPrimary() -> Bool
     func startDoubaoVoice() -> Bool
-    func stopDoubaoVoiceIfPossible() -> Bool
 }
 
 public struct SwitchCoordinator {
@@ -42,20 +40,22 @@ public struct SwitchCoordinator {
         }
 
         switch event {
-        case .leftControlPressed:
-            return
+        case .triggerKeyPressed:
+            handleTriggerPressed()
+        case .anyKeyPressed:
+            if state == .doubaoVoiceActive {
+                exitDoubaoVoice()
+            }
         case .externalVoiceToolStarted:
             state = .suspended
         case .externalVoiceToolStopped:
             if state == .suspended {
                 state = .idle
             }
-        case .rightControlPressed:
-            handleRightControlPressed()
         }
     }
 
-    private mutating func handleRightControlPressed() {
+    private mutating func handleTriggerPressed() {
         switch state {
         case .idle:
             enterDoubaoVoice()

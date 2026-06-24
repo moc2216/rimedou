@@ -14,6 +14,7 @@ public final class AppRunner {
     private var voiceToolPollTimer: Timer?
     private var primaryInputGuardTimer: Timer?
     private var isPaused = false
+    private var triggerKey: TriggerKey = .rightCommand
     private let hotkeyRuntimeState = HotkeyRuntimeState()
 
     public init(
@@ -28,6 +29,7 @@ public final class AppRunner {
 
     public func run(shouldStartRunLoop: Bool = true) throws {
         let config = try configStore.load(path: configPath)
+        self.triggerKey = config.triggerKey
         let voiceToolMonitor = VoiceToolMonitor(config: config)
         self.voiceToolMonitor = voiceToolMonitor
 
@@ -175,14 +177,22 @@ public final class AppRunner {
         }
 
         let monitor = HotkeyMonitor(
+            triggerKey: triggerKey,
             eventDelayProvider: { [weak self] event in
-                guard event == .rightControlPressed else {
+                if event == .anyKeyPressed {
+                    return 0
+                }
+
+                guard event == .triggerKeyPressed else {
                     return HotkeyMonitor.defaultHotkeyDispatchDelaySeconds
                 }
 
-                return self?.hotkeyRuntimeState.shouldHandleRightControlImmediately() == true
+                return self?.hotkeyRuntimeState.isVoiceActive() == true
                     ? 0
                     : HotkeyMonitor.defaultHotkeyDispatchDelaySeconds
+            },
+            isVoiceActiveProvider: { [weak self] in
+                self?.hotkeyRuntimeState.isVoiceActive() ?? false
             },
             eventHandler: { [weak self] event in
                 Task { @MainActor in
@@ -264,7 +274,7 @@ private final class HotkeyRuntimeState: @unchecked Sendable {
         lock.unlock()
     }
 
-    func shouldHandleRightControlImmediately() -> Bool {
+    func isVoiceActive() -> Bool {
         lock.lock()
         let value = isDoubaoVoiceActive
         lock.unlock()
