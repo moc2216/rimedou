@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Foundation 的 Sendable 基础类型
+ * [OUTPUT]: 对外提供 BridgeState、BridgeEvent、BridgeAction、BridgeStateMachine
+ * [POS]: DoubaoVoiceBridgeCore 的会话状态核心，被菜单栏主程序驱动输入法切换与语音触发
+ * [PROTOCOL]: 变更时更新此头部，然后检查 codex.md
+ */
 import Foundation
 
 public enum BridgeState: Equatable, Sendable {
@@ -5,12 +11,14 @@ public enum BridgeState: Equatable, Sendable {
     case waitingForTriggerHold
     case preparingVoice
     case holdingOption
+    case tapVoiceActive
 }
 
 public enum BridgeEvent: Equatable, Sendable {
     case rightCommandDown
     case triggerHoldThresholdPassed
     case optionHoldStarted
+    case tapVoiceTriggerSent
     case rightCommandUp
     case reset
 }
@@ -44,12 +52,18 @@ public struct BridgeStateMachine: Sendable {
         case (.preparingVoice, .optionHoldStarted):
             state = .holdingOption
             return []
+        case (.preparingVoice, .tapVoiceTriggerSent):
+            state = .tapVoiceActive
+            return []
         case (.preparingVoice, .rightCommandUp):
             state = .idle
             return [.cancelPendingOptionHold, .restorePreviousInputMethod]
         case (.holdingOption, .rightCommandUp):
             state = .idle
             return [.releaseOptionHold, .restorePreviousInputMethod]
+        case (.tapVoiceActive, .rightCommandUp):
+            state = .idle
+            return [.restorePreviousInputMethod]
         case (_, .reset):
             state = .idle
             return []
