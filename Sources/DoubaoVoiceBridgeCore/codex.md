@@ -3,7 +3,7 @@
 
 成员清单
 AppLogger.swift: 应用日志写入器，串行队列写入 ~/Library/Logs/DoubaoVoiceBridge/app.log
-BridgeConfig.swift: 配置模型与 JSON 加载器，解析快捷键、时序参数、默认配置模板
+BridgeConfig.swift: 配置模型与 JSON 加载器，解析快捷键、时序参数（含 tapDuration）、默认配置模板
 BridgeStateMachine.swift: 语音会话状态机，统一触发按下、阈值、长按、单点、释放与恢复动作
 DoubaoImeVersionDetector.swift: 豆包输入法版本探测器与触发策略判定，0.9.2 起切到 tapHotkey
 InputSourceController.swift: Carbon TIS 输入法控制器，选择、读取、等待当前输入源

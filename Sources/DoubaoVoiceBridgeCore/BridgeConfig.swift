@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Foundation 的 JSONDecoder/Data
+ * [OUTPUT]: 对外提供 BridgeKey、BridgeHotkey、BridgeConfig、PartialBridgeConfig 类型与 JSON 加载/默认配置模板
+ * [POS]: DoubaoVoiceBridgeCore 的配置层，被 main.swift 入口消费；定义所有可调时序参数与快捷键解析
+ * [PROTOCOL]: 变更时更新此头部，然后检查 codex.md
+ */
 import Foundation
 
 public enum BridgeKey: Equatable, Hashable, Sendable {
@@ -119,6 +125,7 @@ public struct BridgeConfig: Equatable, Sendable {
     public var triggerHoldDelay: TimeInterval
     public var optionWarmupTapDuration: TimeInterval
     public var optionWarmupToHoldDelay: TimeInterval
+    public var tapDuration: TimeInterval
     public var triggerHotkey: BridgeHotkey
     public var voiceHotkey: BridgeHotkey
 
@@ -133,6 +140,7 @@ public struct BridgeConfig: Equatable, Sendable {
         triggerHoldDelay: 0.25,
         optionWarmupTapDuration: 0.05,
         optionWarmupToHoldDelay: 0.22,
+        tapDuration: 0.05,
         triggerHotkey: BridgeHotkey(keys: [.rightCommand]),
         voiceHotkey: BridgeHotkey(keys: [.leftOption])
     )
@@ -150,6 +158,7 @@ public struct BridgeConfig: Equatable, Sendable {
         config.triggerHoldDelay = partial.triggerHoldDelay ?? config.triggerHoldDelay
         config.optionWarmupTapDuration = partial.optionWarmupTapDuration ?? config.optionWarmupTapDuration
         config.optionWarmupToHoldDelay = partial.optionWarmupToHoldDelay ?? config.optionWarmupToHoldDelay
+        config.tapDuration = partial.tapDuration ?? config.tapDuration
         config.triggerHotkey = partial.triggerHotkey.flatMap(BridgeHotkey.parse) ?? config.triggerHotkey
         config.voiceHotkey = partial.voiceHotkey.flatMap(BridgeHotkey.parse) ?? config.voiceHotkey
         return config
@@ -251,6 +260,7 @@ public struct BridgeConfig: Equatable, Sendable {
           "triggerHoldDelay": 0.25,
           "optionWarmupTapDuration": 0.05,
           "optionWarmupToHoldDelay": 0.22,
+          "tapDuration": 0.05,
           "triggerHotkey": "RightCommand",
           "voiceHotkey": "LeftOption"
         }
@@ -269,6 +279,7 @@ private struct PartialBridgeConfig: Decodable {
     var triggerHoldDelay: TimeInterval?
     var optionWarmupTapDuration: TimeInterval?
     var optionWarmupToHoldDelay: TimeInterval?
+    var tapDuration: TimeInterval?
     var triggerHotkey: String?
     var voiceHotkey: String?
 }
