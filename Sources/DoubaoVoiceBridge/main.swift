@@ -486,11 +486,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard sessionID == currentSession, triggerHotkeyDown else {
             return
         }
-        logger.log("voice hotkey warmup down/up")
-        voiceHotkeySender.down()
-        DispatchQueue.main.asyncAfter(deadline: .now() + config.optionWarmupTapDuration) { [weak self] in
-            guard let self else { return }
-            self.voiceHotkeySender.up()
+        logger.log("voice hotkey warmup tap")
+        voiceHotkeySender.tap(duration: config.tapDuration) { [weak self] in
+            guard let self, self.sessionID == currentSession else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + self.config.optionWarmupToHoldDelay) { [weak self] in
                 guard let self, self.sessionID == currentSession, self.triggerHotkeyDown else { return }
                 self.logger.log("voice hotkey formal hold down")
@@ -506,10 +504,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         logger.log("voice hotkey single tap for doubao免按模式")
-        voiceHotkeySender.down()
-        DispatchQueue.main.asyncAfter(deadline: .now() + config.optionWarmupTapDuration) { [weak self] in
+        voiceHotkeySender.tap(duration: config.tapDuration) { [weak self] in
             guard let self, self.sessionID == currentSession else { return }
-            self.voiceHotkeySender.up()
             self.machine.handle(.tapVoiceTriggerSent)
         }
     }
@@ -1112,31 +1108,90 @@ private final class HotkeySender {
         self.hotkey = hotkey
     }
 
+    // MARK: - 长按: down 保持, up 释放
+
     func down() {
         for key in hotkey.keys where key.isModifier {
-            post(key: key, down: true)
+            postModifier(key: key, down: true)
         }
         for key in hotkey.keys where !key.isModifier {
-            post(key: key, down: true)
+            postKey(key: key, down: true)
         }
     }
 
     func up() {
         for key in hotkey.keys.reversed() where !key.isModifier {
-            post(key: key, down: false)
+            postKey(key: key, down: false)
         }
         for key in hotkey.keys.reversed() where key.isModifier {
-            post(key: key, down: false)
+            postModifier(key: key, down: false)
         }
     }
 
-    private func post(key: BridgeKey, down: Bool) {
-        guard let keyCode = keyCode(for: key) else {
-            return
+    // MARK: - 单次点按: 完整事件序列 (flagsChanged + keyDown -> keyUp + flagsChanged)
+
+    func tap(duration: TimeInterval, completion: (() -> Void)? = nil) {
+        for key in hotkey.keys where key.isModifier {
+            postModifier(key: key, down: true)
         }
+        for key in hotkey.keys where !key.isModifier {
+            postKey(key: key, down: true)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            guard let self else { return }
+            for key in self.hotkey.keys.reversed() where !key.isModifier {
+                self.postKey(key: key, down: false)
+            }
+            for key in self.hotkey.keys.reversed() where key.isModifier {
+                self.postModifier(key: key, down: false)
+            }
+            completion?()
+        }
+    }
+
+    // MARK: - 修饰键事件 (flagsChanged + keyDown/keyUp)
+
+    private func postModifier(key: BridgeKey, down: Bool) {
+        guard let keyCode = keyCode(for: key) else { return }
+
+        // 修饰键的 keyDown/keyUp 会自动触发 flagsChanged
         let event = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: down)
-        event?.flags = down ? flags(for: hotkey) : []
+        event?.flags = down ? flags(for: hotkey) : remainingFlags(excluding: key)
         event?.post(tap: .cghidEventTap)
+    }
+
+    // MARK: - 普通键事件 (仅 keyDown/keyUp)
+
+    private func postKey(key: BridgeKey, down: Bool) {
+        guard let keyCode = keyCode(for: key) else { return }
+        let event = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: down)
+        event?.flags = flags(for: hotkey)
+        event?.post(tap: .cghidEventTap)
+    }
+
+    // MARK: - Flags 计算
+
+    /// keyUp 时 flags 反映"除刚释放键外的其余修饰键"
+    private func remainingFlags(excluding excludedKey: BridgeKey) -> CGEventFlags {
+        hotkey.keys
+            .filter { $0.isModifier && $0 != excludedKey }
+            .reduce(CGEventFlags()) { result, key in
+                var result = result
+                switch key {
+                case .leftShift, .rightShift, .shift:
+                    result.insert(.maskShift)
+                case .leftControl, .rightControl, .control:
+                    result.insert(.maskControl)
+                case .leftOption, .rightOption, .option:
+                    result.insert(.maskAlternate)
+                case .leftCommand, .rightCommand, .command:
+                    result.insert(.maskCommand)
+                case .tab, .space, .character:
+                    break
+                }
+                return result
+            }
     }
 }
 

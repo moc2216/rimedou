@@ -2,7 +2,7 @@
 > L2 | 父级: /codex.md
 
 成员清单
-main.swift: macOS 菜单栏入口，安装权限门禁、LaunchAgent、事件 tap、输入法切换、焦点 bounce 与豆包语音触发
+main.swift: macOS 菜单栏入口，安装权限门禁、LaunchAgent、事件 tap、输入法切换、焦点 bounce 与豆包语音触发；HotkeySender 模拟真实硬件事件序列（flagsChanged + remainingFlags）
 
 模块法则:
 入口层只编排副作用。配置、状态机和版本策略来自 DoubaoVoiceBridgeCore；入口不得复制版本判断和配置解析逻辑。

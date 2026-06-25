@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 XCTest、DoubaoVoiceBridgeCore 的 BridgeConfig/BridgeHotkey/BridgeKey
+ * [OUTPUT]: 对外提供 BridgeConfig 默认值、JSON 解析、快捷键解析、tapDuration 向后兼容等测试用例
+ * [POS]: DoubaoVoiceBridgeCoreTests 的配置测试文件，覆盖 BridgeConfig 的所有加载路径
+ * [PROTOCOL]: 变更时更新此头部，然后检查 codex.md
+ */
 import XCTest
 @testable import DoubaoVoiceBridgeCore
 
@@ -17,6 +23,7 @@ final class BridgeConfigTests: XCTestCase {
         XCTAssertEqual(config.triggerHoldDelay, 0.25)
         XCTAssertEqual(config.optionWarmupTapDuration, 0.05)
         XCTAssertEqual(config.optionWarmupToHoldDelay, 0.22)
+        XCTAssertEqual(config.tapDuration, 0.05)
         XCTAssertEqual(config.triggerHotkey, BridgeHotkey(keys: [.rightCommand]))
         XCTAssertEqual(config.voiceHotkey, BridgeHotkey(keys: [.leftOption]))
     }
@@ -161,5 +168,29 @@ final class BridgeConfigTests: XCTestCase {
         XCTAssertFalse(config.launchAtLogin)
         XCTAssertEqual(config.restoreDelay, BridgeConfig.default.restoreDelay)
         XCTAssertTrue(fileManager.fileExists(atPath: userConfigURL.path))
+    }
+
+    func testTapDurationFallsBackToDefaultWhenMissing() throws {
+        let data = """
+        {
+          "restoreDelay": 0.35
+        }
+        """.data(using: .utf8)!
+
+        let config = try BridgeConfig.load(from: data)
+
+        XCTAssertEqual(config.tapDuration, 0.05)
+    }
+
+    func testTapDurationOverriddenFromJSON() throws {
+        let data = """
+        {
+          "tapDuration": 0.1
+        }
+        """.data(using: .utf8)!
+
+        let config = try BridgeConfig.load(from: data)
+
+        XCTAssertEqual(config.tapDuration, 0.1)
     }
 }
