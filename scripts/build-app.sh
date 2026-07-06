@@ -62,12 +62,15 @@ make_app_icon() {
         '}' > "$appiconset/Contents.json"
 
     iconutil -c icns "$iconset" -o "$output"
-    xcrun actool "$asset_catalog" \
-        --compile "$RESOURCES" \
-        --platform macosx \
-        --minimum-deployment-target 13.0 \
-        --app-icon AppIcon \
-        --output-partial-info-plist "$asset_info" >/dev/null
+    # actool 需要完整 Xcode；CLT 环境下跳过（Info.plist 用 AppIcon.icns，已由 iconutil 生成）
+    if xcrun --find actool >/dev/null 2>&1; then
+        xcrun actool "$asset_catalog" \
+            --compile "$RESOURCES" \
+            --platform macosx \
+            --minimum-deployment-target 13.0 \
+            --app-icon AppIcon \
+            --output-partial-info-plist "$asset_info" >/dev/null
+    fi
 }
 
 cd "$ROOT"

@@ -29,8 +29,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var runLoopSource: CFRunLoopSource?
     private var enabled = true
     private var triggerHotkeyDown = false
-    private var triggerHoldPending = false
-    private var triggerHoldPendingID = UUID()
+    private var triggerTapArmed = false
+    private var triggerDownAt: Date?
     private var voiceHotkeyIsDown = false
     private var activeKeyCodes = Set<Int64>()
     private var permissionWindowController: PermissionWindowController?
@@ -103,8 +103,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             releaseOptionIfNeeded()
             restorePreviousInputMethod()
             triggerHotkeyDown = false
-            triggerHoldPending = false
-            triggerHoldPendingID = UUID()
+            triggerTapArmed = false
+            triggerDownAt = nil
             activeKeyCodes.removeAll()
             sessionID = UUID()
             machine.handle(.reset)
@@ -124,8 +124,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         releaseOptionIfNeeded()
         restorePreviousInputMethod()
         triggerHotkeyDown = false
-        triggerHoldPending = false
-        triggerHoldPendingID = UUID()
+        triggerTapArmed = false
+        triggerDownAt = nil
         activeKeyCodes.removeAll()
         sessionID = UUID()
         machine.handle(.reset)
@@ -134,7 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         voiceHotkeySender = HotkeySender(hotkey: config.voiceHotkey)
         refreshDoubaoVoiceStrategy(reason: "config reload")
         logger.log(
-            "config reloaded: triggerHotkey=\(hotkeyDescription(config.triggerHotkey)) voiceHotkey=\(hotkeyDescription(config.voiceHotkey)) triggerHoldDelay=\(config.triggerHoldDelay) postSwitchSettleDelay=\(config.postSwitchSettleDelay)"
+            "config reloaded: triggerHotkey=\(hotkeyDescription(config.triggerHotkey)) voiceHotkey=\(hotkeyDescription(config.voiceHotkey)) tapMaxDuration=\(config.tapMaxDuration) postSwitchSettleDelay=\(config.postSwitchSettleDelay)"
         )
     }
 
@@ -319,6 +319,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// 系统因超时/用户输入禁用 event tap 后重新启用，防止"变聋"
+    func reenableEventTap() {
+        guard let tap = eventTap else { return }
+        CGEvent.tapEnable(tap: tap, enable: true)
+        logger.log("event tap re-enabled after system disable")
+    }
+
     fileprivate func handleKeyboardEvent(_ event: CGEvent, type: CGEventType) -> Unmanaged<CGEvent>? {
         guard enabled else {
             return Unmanaged.passUnretained(event)
@@ -332,8 +339,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let isTriggerEvent = isTriggerEvent(keyCode: keyCode)
-        if type == .keyDown, !isTriggerEvent, triggerHoldPending {
-            cancelPendingTriggerHold(reason: "non-trigger key pressed before hold threshold")
+        if type == .keyDown, !isTriggerEvent, triggerTapArmed {
+            cancelPendingTriggerTap(reason: "non-trigger key pressed during tap window")
+        }
+        // 语音激活期间，豆包原生"任意键停止"：非触发键按下 = 豆包已结束语音，DVB 直接走还原
+        if machine.state == .voiceActive, !isTriggerEvent, !isVoiceHotkeyEvent(keyCode: keyCode),
+           type == .keyDown || type == .flagsChanged {
+            handleExternalVoiceEnd(reason: type == .keyDown ? "non-trigger key down" : "modifier change")
         }
         guard isTriggerEvent else {
             return Unmanaged.passUnretained(event)
@@ -356,55 +368,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleTriggerHotkeyDown() {
         logger.log("trigger hotkey down")
-        let actions = machine.handle(.rightCommandDown)
-        if actions.contains(.startVoiceSession) {
-            startVoiceSession()
-        }
-        triggerHoldPending = true
-        triggerHoldPendingID = UUID()
-        let pendingID = triggerHoldPendingID
-        DispatchQueue.main.asyncAfter(deadline: .now() + config.triggerHoldDelay) { [weak self] in
-            self?.completePendingTriggerHoldIfCurrent(pendingID)
-        }
+        // toggle 模式：按下只是“装弹”，等松开时再判定是否为一次干净点按
+        triggerTapArmed = true
+        triggerDownAt = Date()
     }
 
     private func handleTriggerHotkeyUp() {
         logger.log("trigger hotkey up")
-        triggerHoldPending = false
-        triggerHoldPendingID = UUID()
-        let actions = machine.handle(.rightCommandUp)
-        if actions.contains(.cancelPendingOptionHold) {
-            sessionID = UUID()
-            logger.log("cancel pending voice hotkey hold")
-        }
-        if actions.contains(.releaseOptionHold) {
-            releaseOptionIfNeeded()
-        }
-        if actions.contains(.restorePreviousInputMethod) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + config.restoreDelay) { [weak self] in
-                self?.restorePreviousInputMethod()
-            }
-        }
-    }
-
-    private func completePendingTriggerHoldIfCurrent(_ pendingID: UUID) {
-        guard triggerHoldPending, triggerHoldPendingID == pendingID, triggerHotkeyDown else {
+        guard triggerTapArmed, let downAt = triggerDownAt else {
+            triggerTapArmed = false
             return
         }
-        triggerHoldPending = false
-        logger.log("trigger hold threshold passed")
-        let actions = machine.handle(.triggerHoldThresholdPassed)
-        if actions.contains(.startVoiceSession) {
-            startVoiceSession()
+        triggerTapArmed = false
+        let duration = Date().timeIntervalSince(downAt)
+        guard duration <= config.tapMaxDuration else {
+            logger.log("trigger tap ignored: held \(String(format: "%.3f", duration))s > \(config.tapMaxDuration)s")
+            return
+        }
+        logger.log("trigger tap detected: duration \(String(format: "%.3f", duration))s")
+        let actions = machine.handle(.triggerTap)
+        for action in actions {
+            apply(action)
         }
     }
 
-    private func cancelPendingTriggerHold(reason: String) {
-        triggerHoldPending = false
-        triggerHoldPendingID = UUID()
-        sessionID = UUID()
-        machine.handle(.reset)
-        logger.log("cancel pending trigger hold: \(reason)")
+    private func cancelPendingTriggerTap(reason: String) {
+        guard triggerTapArmed else { return }
+        triggerTapArmed = false
+        logger.log("trigger tap cancelled: \(reason)")
+    }
+
+    private func handleExternalVoiceEnd(reason: String) {
+        logger.log("external voice end: \(reason)")
+        let actions = machine.handle(.externalVoiceEnd)
+        for action in actions { apply(action) }
+    }
+
+    private func apply(_ action: BridgeAction) {
+        switch action {
+        case .startVoiceSession:
+            startVoiceSession()
+        case .stopVoice:
+            stopVoice()
+        case .restorePreviousInputMethod:
+            scheduleRestore()
+        }
     }
 
     private func refreshDoubaoVoiceStrategy(reason: String) {
@@ -430,83 +438,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func isVoiceHotkeyEvent(keyCode: Int64) -> Bool {
+        config.voiceHotkey.keys.contains { key in
+            keyCodes(for: key).contains { Int64($0) == keyCode }
+        }
+    }
+
     private func shouldSwallowTriggerEvent() -> Bool {
         !config.triggerHotkey.keys.allSatisfy(\.isModifier)
     }
 
     private func startVoiceSession() {
-        sessionID = UUID()
-        let currentSession = sessionID
-        let originalApp = NSWorkspace.shared.frontmostApplication
-        let originalWindow = FocusBouncer.focusedWindow(for: originalApp)
+        sessionID = UUID() // 失效化之前任何在途的还原轮询
         let currentInput = inputSources.currentInputSourceName()
         inputMethodToRestore = currentInput
         logger.log("record original input source: \(currentInput)")
-        logger.log("switch to doubao input source: \(doubaoInputMethodName)")
+        logger.log("send voice hotkey (global wake) to start 豆包 voice")
+        // 全局唤起模式：豆包自己切到自己 + 开语音，DVB 不切输入法、不弹焦点
+        voiceHotkeySender.tap(duration: config.tapDuration, completion: nil)
+    }
 
-        // TIS APIs (selectInputSource, TISCreateInputSourceList) must be called
-        // from the main thread. macOS 15+ enforces this via dispatch assertion.
-        _ = inputSources.selectInputSource(namedOrIdentifiedBy: doubaoInputMethodName)
+    private func stopVoice() {
+        logger.log("send voice hotkey (global wake) to stop 豆包 voice")
+        voiceHotkeySender.tap(duration: config.tapDuration, completion: nil)
+    }
 
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self else { return }
-            Thread.sleep(forTimeInterval: self.config.postSwitchSettleDelay)
-            let confirmed = self.inputSources.waitUntilActive(
-                matches: doubaoInputMethodName,
-                timeout: self.config.switchWaitTimeout,
-                pollInterval: self.config.switchPollInterval
-            )
-            self.logger.log(confirmed ? "confirmed doubao input source" : "doubao input source confirmation timed out")
+    private func scheduleRestore() {
+        guard let target = inputMethodToRestore else { return }
+        inputMethodToRestore = nil
+        let mySession = sessionID
+        logger.log("schedule restore to \(target) after 豆包 finalizes")
+        restoreStep(target: target, attempt: 0, session: mySession)
+    }
 
-            DispatchQueue.main.async {
-                guard self.sessionID == currentSession, self.triggerHotkeyDown else { return }
-                self.logger.log("start app focus bounce")
-                self.focusBouncer.bounce(
-                    originalApp: originalApp,
-                    originalWindow: originalWindow,
-                    backDelay: self.config.focusBounceBackDelay,
-                    settleDelay: self.config.focusBounceSettleDelay
-                ) { [weak self] in
-                    self?.startVoiceTriggerIfCurrent(currentSession)
-                }
+    /// 多次轮询切回目标输入法，覆盖豆包上屏期间的反复重抢；新会话开始会通过 sessionID 失效化本轮询
+    private func restoreStep(target: String, attempt: Int, session: UUID) {
+        let maxAttempts = 8
+        let delay: TimeInterval = attempt == 0 ? config.restoreDelay : 0.2
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.sessionID == session else { return }
+            let current = self.inputSources.currentInputSourceName()
+            if current != target && !current.localizedCaseInsensitiveContains(target) {
+                self.logger.log("restore input method to \(target) (current=\(current), attempt \(attempt + 1)/\(maxAttempts))")
+                _ = self.inputSources.selectInputSource(namedOrIdentifiedBy: target)
             }
-        }
-    }
-
-    private func startVoiceTriggerIfCurrent(_ currentSession: UUID) {
-        switch voiceStrategy {
-        case .holdHotkey:
-            startOptionWarmupIfCurrent(currentSession)
-        case .tapHotkey:
-            tapVoiceHotkeyIfCurrent(currentSession)
-        }
-    }
-
-    private func startOptionWarmupIfCurrent(_ currentSession: UUID) {
-        guard sessionID == currentSession, triggerHotkeyDown else {
-            return
-        }
-        logger.log("voice hotkey warmup tap")
-        voiceHotkeySender.tap(duration: config.tapDuration) { [weak self] in
-            guard let self, self.sessionID == currentSession else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + self.config.optionWarmupToHoldDelay) { [weak self] in
-                guard let self, self.sessionID == currentSession, self.triggerHotkeyDown else { return }
-                self.logger.log("voice hotkey formal hold down")
-                self.voiceHotkeySender.down()
-                self.voiceHotkeyIsDown = true
-                self.machine.handle(.optionHoldStarted)
+            if attempt + 1 < maxAttempts {
+                self.restoreStep(target: target, attempt: attempt + 1, session: session)
             }
-        }
-    }
-
-    private func tapVoiceHotkeyIfCurrent(_ currentSession: UUID) {
-        guard sessionID == currentSession, triggerHotkeyDown else {
-            return
-        }
-        logger.log("voice hotkey single tap for doubao免按模式")
-        voiceHotkeySender.tap(duration: config.tapDuration) { [weak self] in
-            guard let self, self.sessionID == currentSession else { return }
-            self.machine.handle(.tapVoiceTriggerSent)
         }
     }
 
@@ -542,10 +520,17 @@ enum DoubaoVoiceBridgeMain {
 }
 
 private let eventTapCallback: CGEventTapCallBack = { _, type, event, refcon in
-    guard [.flagsChanged, .keyDown, .keyUp].contains(type), let refcon else {
+    guard let refcon else {
         return Unmanaged.passUnretained(event)
     }
     let app = Unmanaged<AppDelegate>.fromOpaque(refcon).takeUnretainedValue()
+    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+        app.reenableEventTap()
+        return Unmanaged.passUnretained(event)
+    }
+    guard [.flagsChanged, .keyDown, .keyUp].contains(type) else {
+        return Unmanaged.passUnretained(event)
+    }
     return app.handleKeyboardEvent(event, type: type)
 }
 
