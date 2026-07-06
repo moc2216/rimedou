@@ -1,68 +1,48 @@
 /**
  * [INPUT]: 依赖 XCTest 的断言能力，依赖 DoubaoVoiceBridgeCore 的 BridgeStateMachine
- * [OUTPUT]: 对外提供桥接状态机的行为回归测试
- * [POS]: Tests/DoubaoVoiceBridgeCoreTests 的核心状态测试，约束按键生命周期与恢复动作
+ * [OUTPUT]: 对外提供全局唤起 toggle 状态机的行为回归测试
+ * [POS]: Tests/DoubaoVoiceBridgeCoreTests 的核心状态测试，约束点按生命周期与恢复动作
  * [PROTOCOL]: 变更时更新此头部，然后检查 codex.md
  */
 import XCTest
 @testable import DoubaoVoiceBridgeCore
 
 final class BridgeStateMachineTests: XCTestCase {
-    func testTriggerDownWaitsForHoldThresholdBeforeStartingVoiceSession() {
+    func testTapFromIdleStartsVoice() {
         var machine = BridgeStateMachine()
 
-        let downActions = machine.handle(.rightCommandDown)
-        let thresholdActions = machine.handle(.triggerHoldThresholdPassed)
+        let actions = machine.handle(.triggerTap)
 
-        XCTAssertEqual(downActions, [])
-        XCTAssertEqual(thresholdActions, [.startVoiceSession])
-        XCTAssertEqual(machine.state, .preparingVoice)
+        XCTAssertEqual(actions, [.startVoiceSession])
+        XCTAssertEqual(machine.state, .voiceActive)
     }
 
-    func testTriggerUpBeforeHoldThresholdDoesNotStartVoiceSession() {
+    func testTapWhileActiveStopsVoiceAndRestores() {
         var machine = BridgeStateMachine()
 
-        let downActions = machine.handle(.rightCommandDown)
-        let upActions = machine.handle(.rightCommandUp)
+        _ = machine.handle(.triggerTap)
+        let actions = machine.handle(.triggerTap)
 
-        XCTAssertEqual(downActions, [])
-        XCTAssertEqual(upActions, [])
+        XCTAssertEqual(actions, [.stopVoice, .restorePreviousInputMethod])
         XCTAssertEqual(machine.state, .idle)
     }
 
-    func testRightCommandUpBeforeOptionHoldCancelsPendingVoiceTrigger() {
+    func testExternalVoiceEndRestoresWithoutStopping() {
         var machine = BridgeStateMachine()
 
-        _ = machine.handle(.rightCommandDown)
-        let downActions = machine.handle(.triggerHoldThresholdPassed)
-        let upActions = machine.handle(.rightCommandUp)
-
-        XCTAssertEqual(downActions, [.startVoiceSession])
-        XCTAssertEqual(upActions, [.cancelPendingOptionHold, .restorePreviousInputMethod])
-        XCTAssertEqual(machine.state, .idle)
-    }
-
-    func testRightCommandUpWhileHoldingOptionReleasesOptionThenRestoresInputMethod() {
-        var machine = BridgeStateMachine()
-
-        _ = machine.handle(.rightCommandDown)
-        _ = machine.handle(.triggerHoldThresholdPassed)
-        _ = machine.handle(.optionHoldStarted)
-        let actions = machine.handle(.rightCommandUp)
-
-        XCTAssertEqual(actions, [.releaseOptionHold, .restorePreviousInputMethod])
-        XCTAssertEqual(machine.state, .idle)
-    }
-
-    func testRightCommandUpAfterTapVoiceTriggerOnlyRestoresInputMethod() {
-        var machine = BridgeStateMachine()
-
-        _ = machine.handle(.rightCommandDown)
-        _ = machine.handle(.triggerHoldThresholdPassed)
-        _ = machine.handle(.tapVoiceTriggerSent)
-        let actions = machine.handle(.rightCommandUp)
+        _ = machine.handle(.triggerTap)
+        let actions = machine.handle(.externalVoiceEnd)
 
         XCTAssertEqual(actions, [.restorePreviousInputMethod])
+        XCTAssertEqual(machine.state, .idle)
+    }
+
+    func testResetReturnsToIdle() {
+        var machine = BridgeStateMachine()
+
+        _ = machine.handle(.triggerTap)
+        _ = machine.handle(.reset)
+
         XCTAssertEqual(machine.state, .idle)
     }
 }

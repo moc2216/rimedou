@@ -122,7 +122,7 @@ public struct BridgeConfig: Equatable, Sendable {
     public var switchPollInterval: TimeInterval
     public var focusBounceBackDelay: TimeInterval
     public var focusBounceSettleDelay: TimeInterval
-    public var triggerHoldDelay: TimeInterval
+    public var tapMaxDuration: TimeInterval
     public var optionWarmupTapDuration: TimeInterval
     public var optionWarmupToHoldDelay: TimeInterval
     public var tapDuration: TimeInterval
@@ -131,16 +131,16 @@ public struct BridgeConfig: Equatable, Sendable {
 
     public static let `default` = BridgeConfig(
         launchAtLogin: false,
-        restoreDelay: 0.20,
-        postSwitchSettleDelay: 0.50,
+        restoreDelay: 0.50,
+        postSwitchSettleDelay: 0.25,
         switchWaitTimeout: 2.00,
         switchPollInterval: 0.05,
-        focusBounceBackDelay: 0.16,
-        focusBounceSettleDelay: 0.16,
-        triggerHoldDelay: 0.25,
+        focusBounceBackDelay: 0.10,
+        focusBounceSettleDelay: 0.10,
+        tapMaxDuration: 0.35,
         optionWarmupTapDuration: 0.05,
         optionWarmupToHoldDelay: 0.22,
-        tapDuration: 0.05,
+        tapDuration: 0.15,
         triggerHotkey: BridgeHotkey(keys: [.rightCommand]),
         voiceHotkey: BridgeHotkey(keys: [.leftOption])
     )
@@ -155,7 +155,7 @@ public struct BridgeConfig: Equatable, Sendable {
         config.switchPollInterval = partial.switchPollInterval ?? config.switchPollInterval
         config.focusBounceBackDelay = partial.focusBounceBackDelay ?? config.focusBounceBackDelay
         config.focusBounceSettleDelay = partial.focusBounceSettleDelay ?? config.focusBounceSettleDelay
-        config.triggerHoldDelay = partial.triggerHoldDelay ?? config.triggerHoldDelay
+        config.tapMaxDuration = partial.tapMaxDuration ?? config.tapMaxDuration
         config.optionWarmupTapDuration = partial.optionWarmupTapDuration ?? config.optionWarmupTapDuration
         config.optionWarmupToHoldDelay = partial.optionWarmupToHoldDelay ?? config.optionWarmupToHoldDelay
         config.tapDuration = partial.tapDuration ?? config.tapDuration
@@ -251,16 +251,16 @@ public struct BridgeConfig: Equatable, Sendable {
         """
         {
           "launchAtLogin": false,
-          "restoreDelay": 0.2,
-          "postSwitchSettleDelay": 0.5,
+          "restoreDelay": 0.5,
+          "postSwitchSettleDelay": 0.25,
           "switchWaitTimeout": 2.0,
           "switchPollInterval": 0.05,
-          "focusBounceBackDelay": 0.16,
-          "focusBounceSettleDelay": 0.16,
-          "triggerHoldDelay": 0.25,
+          "focusBounceBackDelay": 0.1,
+          "focusBounceSettleDelay": 0.1,
+          "tapMaxDuration": 0.35,
           "optionWarmupTapDuration": 0.05,
           "optionWarmupToHoldDelay": 0.22,
-          "tapDuration": 0.05,
+          "tapDuration": 0.15,
           "triggerHotkey": "RightCommand",
           "voiceHotkey": "LeftOption"
         }
@@ -276,7 +276,7 @@ private struct PartialBridgeConfig: Decodable {
     var switchPollInterval: TimeInterval?
     var focusBounceBackDelay: TimeInterval?
     var focusBounceSettleDelay: TimeInterval?
-    var triggerHoldDelay: TimeInterval?
+    var tapMaxDuration: TimeInterval?
     var optionWarmupTapDuration: TimeInterval?
     var optionWarmupToHoldDelay: TimeInterval?
     var tapDuration: TimeInterval?

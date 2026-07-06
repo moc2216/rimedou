@@ -15,15 +15,15 @@ final class BridgeConfigTests: XCTestCase {
         XCTAssertFalse(configurableFields.contains("targetInputMethod"))
         XCTAssertFalse(configurableFields.contains("userInputMethod"))
         XCTAssertFalse(config.launchAtLogin)
-        XCTAssertEqual(config.restoreDelay, 0.20)
-        XCTAssertEqual(config.postSwitchSettleDelay, 0.50)
+        XCTAssertEqual(config.restoreDelay, 0.50)
+        XCTAssertEqual(config.postSwitchSettleDelay, 0.25)
         XCTAssertEqual(config.switchWaitTimeout, 2.00)
-        XCTAssertEqual(config.focusBounceBackDelay, 0.16)
-        XCTAssertEqual(config.focusBounceSettleDelay, 0.16)
-        XCTAssertEqual(config.triggerHoldDelay, 0.25)
+        XCTAssertEqual(config.focusBounceBackDelay, 0.10)
+        XCTAssertEqual(config.focusBounceSettleDelay, 0.10)
+        XCTAssertEqual(config.tapMaxDuration, 0.35)
         XCTAssertEqual(config.optionWarmupTapDuration, 0.05)
         XCTAssertEqual(config.optionWarmupToHoldDelay, 0.22)
-        XCTAssertEqual(config.tapDuration, 0.05)
+        XCTAssertEqual(config.tapDuration, 0.15)
         XCTAssertEqual(config.triggerHotkey, BridgeHotkey(keys: [.rightCommand]))
         XCTAssertEqual(config.voiceHotkey, BridgeHotkey(keys: [.leftOption]))
     }
@@ -40,8 +40,8 @@ final class BridgeConfigTests: XCTestCase {
 
         XCTAssertFalse(config.launchAtLogin)
         XCTAssertEqual(config.restoreDelay, 0.35)
-        XCTAssertEqual(config.postSwitchSettleDelay, 0.50)
-        XCTAssertEqual(config.triggerHoldDelay, 0.25)
+        XCTAssertEqual(config.postSwitchSettleDelay, 0.25)
+        XCTAssertEqual(config.tapMaxDuration, 0.35)
         XCTAssertEqual(config.triggerHotkey, BridgeHotkey(keys: [.rightCommand]))
     }
 
@@ -179,7 +179,7 @@ final class BridgeConfigTests: XCTestCase {
 
         let config = try BridgeConfig.load(from: data)
 
-        XCTAssertEqual(config.tapDuration, 0.05)
+        XCTAssertEqual(config.tapDuration, 0.15)
     }
 
     func testTapDurationOverriddenFromJSON() throws {
