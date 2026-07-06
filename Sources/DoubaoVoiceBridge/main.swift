@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var triggerHotkeyDown = false
     private var triggerTapArmed = false
     private var triggerDownAt: Date?
+    private var voiceStartedAt: Date?
     private var voiceHotkeyIsDown = false
     private var activeKeyCodes = Set<Int64>()
     private var permissionWindowController: PermissionWindowController?
@@ -105,6 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             triggerHotkeyDown = false
             triggerTapArmed = false
             triggerDownAt = nil
+            voiceStartedAt = nil
             activeKeyCodes.removeAll()
             sessionID = UUID()
             machine.handle(.reset)
@@ -126,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         triggerHotkeyDown = false
         triggerTapArmed = false
         triggerDownAt = nil
+        voiceStartedAt = nil
         activeKeyCodes.removeAll()
         sessionID = UUID()
         machine.handle(.reset)
@@ -343,8 +346,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             cancelPendingTriggerTap(reason: "non-trigger key pressed during tap window")
         }
         // 语音激活期间，豆包原生"任意键停止"：非触发键按下 = 豆包已结束语音，DVB 直接走还原
+        // 启动后 0.5s 静默：过滤 DVB 合成 Option 与豆包自切输入法引发的 flagsChanged 噪声
         if machine.state == .voiceActive, !isTriggerEvent, !isVoiceHotkeyEvent(keyCode: keyCode),
-           type == .keyDown || type == .flagsChanged {
+           type == .keyDown || type == .flagsChanged,
+           voiceStartedAt.map { Date().timeIntervalSince($0) > 0.5 } ?? false {
             handleExternalVoiceEnd(reason: type == .keyDown ? "non-trigger key down" : "modifier change")
         }
         guard isTriggerEvent else {
@@ -450,12 +455,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startVoiceSession() {
         sessionID = UUID() // 失效化之前任何在途的还原轮询
+        voiceStartedAt = Date()
         let currentInput = inputSources.currentInputSourceName()
-        inputMethodToRestore = currentInput
-        logger.log("record original input source: \(currentInput)")
+        if isDoubaoInputSource(currentInput) {
+            // 当前已在豆包（比如上一次没还原成功），还原目标改用主输入法，避免还原回豆包
+            inputMethodToRestore = "Squirrel"
+            logger.log("current is 豆包 (\(currentInput)); restore target → Squirrel")
+        } else {
+            inputMethodToRestore = currentInput
+            logger.log("record original input source: \(currentInput)")
+        }
         logger.log("send voice hotkey (global wake) to start 豆包 voice")
         // 全局唤起模式：豆包自己切到自己 + 开语音，DVB 不切输入法、不弹焦点
         voiceHotkeySender.tap(duration: config.tapDuration, completion: nil)
+    }
+
+    private func isDoubaoInputSource(_ name: String) -> Bool {
+        name.contains("豆包") || name.lowercased().contains("doubao") || name.lowercased().contains("bytedance")
     }
 
     private func stopVoice() {
