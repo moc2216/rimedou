@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-APP_NAME="DoubaoVoiceBridge"
-LABEL="local.doubao-voice-bridge.keepalive"
+APP_NAME="rimedou"
+LABEL="com.moc2216.rimedou.keepalive"
 APP_PATH="${APP_PATH:-$ROOT/build/$APP_NAME.app}"
 EXECUTABLE="$APP_PATH/Contents/MacOS/$APP_NAME"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"

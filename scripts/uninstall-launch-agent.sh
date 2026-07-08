@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LABEL="local.doubao-voice-bridge.keepalive"
+LABEL="com.moc2216.rimedou.keepalive"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 USER_ID="$(id -u)"
 
