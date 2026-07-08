@@ -2,7 +2,7 @@ import Foundation
 
 public final class AppLogger: @unchecked Sendable {
     private let url: URL
-    private let queue = DispatchQueue(label: "DoubaoVoiceBridge.AppLogger")
+    private let queue = DispatchQueue(label: "RimeDou.AppLogger")
     private let formatter: ISO8601DateFormatter
 
     public init(url: URL = AppLogger.defaultLogURL) {
@@ -16,7 +16,7 @@ public final class AppLogger: @unchecked Sendable {
 
     public static var defaultLogURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Logs/DoubaoVoiceBridge/app.log")
+            .appendingPathComponent("Library/Logs/RimeDou/app.log")
     }
 
     public func log(_ message: String) {

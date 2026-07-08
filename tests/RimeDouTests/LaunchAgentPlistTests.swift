@@ -1,13 +1,13 @@
 import XCTest
-@testable import DoubaoVoiceBridgeCore
+@testable import RimeDouCore
 
 final class LaunchAgentPlistTests: XCTestCase {
     func testKeepAliveAgentPlistUsesExecutableAndInteractiveAquaSession() throws {
-        let executableURL = URL(fileURLWithPath: "/Applications/DoubaoVoiceBridge.app/Contents/MacOS/DoubaoVoiceBridge")
-        let logDirectoryURL = URL(fileURLWithPath: "/Users/tester/Library/Logs/DoubaoVoiceBridge")
+        let executableURL = URL(fileURLWithPath: "/Applications/RimeDou.app/Contents/MacOS/RimeDou")
+        let logDirectoryURL = URL(fileURLWithPath: "/Users/tester/Library/Logs/RimeDou")
 
         let plist = LaunchAgentPlist(
-            label: "local.doubao-voice-bridge.keepalive",
+            label: "com.moc2216.rimedou.keepalive",
             executableURL: executableURL,
             logDirectoryURL: logDirectoryURL
         )
@@ -17,7 +17,7 @@ final class LaunchAgentPlistTests: XCTestCase {
             PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any]
         )
 
-        XCTAssertEqual(object["Label"] as? String, "local.doubao-voice-bridge.keepalive")
+        XCTAssertEqual(object["Label"] as? String, "com.moc2216.rimedou.keepalive")
         XCTAssertEqual(object["ProgramArguments"] as? [String], [executableURL.path])
         XCTAssertEqual(object["RunAtLoad"] as? Bool, true)
         XCTAssertEqual(object["KeepAlive"] as? Bool, true)

@@ -1,16 +1,10 @@
-/**
- * [INPUT]: 依赖 AppKit/ApplicationServices/Carbon 的菜单栏、权限、事件 tap 与焦点控制能力，依赖 DoubaoVoiceBridgeCore 的配置、状态机、输入法与版本策略
- * [OUTPUT]: 对外提供 DoubaoVoiceBridge 菜单栏进程入口和本地按住说话桥接流程
- * [POS]: Sources/DoubaoVoiceBridge 的唯一可执行入口，编排权限、LaunchAgent、输入法切换、豆包语音触发与恢复
- * [PROTOCOL]: 变更时更新此头部，然后检查 codex.md
- */
 import AppKit
 import ApplicationServices
 import Carbon
-import DoubaoVoiceBridgeCore
+import RimeDouCore
 
 private let doubaoInputMethodName = "豆包输入法"
-private let launchAgentLabel = "local.doubao-voice-bridge.keepalive"
+private let launchAgentLabel = "com.moc2216.rimedou.keepalive"
 private let keyboardEventMask = (1 << CGEventType.flagsChanged.rawValue)
     | (1 << CGEventType.keyDown.rawValue)
     | (1 << CGEventType.keyUp.rawValue)
@@ -39,6 +33,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sessionID = UUID()
     private var machine = BridgeStateMachine()
     private var inputMethodToRestore: String?
+    private var appToReactivate: NSRunningApplication?
+    private var windowToReactivate: AXUIElement?
 
     override init() {
         voiceHotkeySender = HotkeySender(hotkey: config.voiceHotkey)
@@ -283,8 +279,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let alert = NSAlert()
         alert.alertStyle = .informational
-        alert.messageText = "DoubaoVoiceBridge permissions are ready"
-        alert.informativeText = "\(hotkeyDescription(config.triggerHotkey)) can now be used as push-to-talk."
+        alert.messageText = "RimeDou permissions are ready"
+        alert.informativeText = "\(hotkeyDescription(config.triggerHotkey)) can now be tapped to toggle voice input."
         alert.addButton(withTitle: "OK")
         alert.runModal()
     }
@@ -345,11 +341,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if type == .keyDown, !isTriggerEvent, triggerTapArmed {
             cancelPendingTriggerTap(reason: "non-trigger key pressed during tap window")
         }
-        // 语音激活期间，豆包原生"任意键停止"：非触发键按下 = 豆包已结束语音，DVB 直接走还原
-        // 启动后 0.5s 静默：过滤 DVB 合成 Option 与豆包自切输入法引发的 flagsChanged 噪声
+        // 语音激活期间，豆包原生"任意键停止"：非触发键按下 = 豆包已结束语音，RimeDou 直接走还原
+        // 启动后 0.5s 静默：过滤 RimeDou 合成 Option 与豆包自切输入法引发的 flagsChanged 噪声
         if machine.state == .voiceActive, !isTriggerEvent, !isVoiceHotkeyEvent(keyCode: keyCode),
            type == .keyDown || type == .flagsChanged,
-           voiceStartedAt.map { Date().timeIntervalSince($0) > 0.5 } ?? false {
+           voiceStartedAt.map({ Date().timeIntervalSince($0) > 0.5 }) ?? false {
             handleExternalVoiceEnd(reason: type == .keyDown ? "non-trigger key down" : "modifier change")
         }
         guard isTriggerEvent else {
@@ -465,8 +461,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             inputMethodToRestore = currentInput
             logger.log("record original input source: \(currentInput)")
         }
+        appToReactivate = NSWorkspace.shared.frontmostApplication
+        windowToReactivate = FocusBouncer.focusedWindow(for: appToReactivate)
         logger.log("send voice hotkey (global wake) to start 豆包 voice")
-        // 全局唤起模式：豆包自己切到自己 + 开语音，DVB 不切输入法、不弹焦点
+        // 全局唤起模式：豆包自己切到自己 + 开语音，RimeDou 不切输入法、不弹焦点
         voiceHotkeySender.tap(duration: config.tapDuration, completion: nil)
     }
 
@@ -490,17 +488,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 多次轮询切回目标输入法，覆盖豆包上屏期间的反复重抢；新会话开始会通过 sessionID 失效化本轮询
     private func restoreStep(target: String, attempt: Int, session: UUID) {
         let maxAttempts = 8
-        let delay: TimeInterval = attempt == 0 ? config.restoreDelay : 0.2
+        let delay: TimeInterval = attempt == 0 ? config.restoreDelay : 0.25
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self, self.sessionID == session else { return }
-            let current = self.inputSources.currentInputSourceName()
-            if current != target && !current.localizedCaseInsensitiveContains(target) {
-                self.logger.log("restore input method to \(target) (current=\(current), attempt \(attempt + 1)/\(maxAttempts))")
-                _ = self.inputSources.selectInputSource(namedOrIdentifiedBy: target)
+            guard let self else { return }
+            guard self.sessionID == session else {
+                self.logger.log("restore aborted (session changed) attempt \(attempt + 1)/\(maxAttempts)")
+                return
             }
+            let current = self.inputSources.currentInputSourceName()
+            if current == target || current.localizedCaseInsensitiveContains(target) {
+                self.logger.log("restore: at \(target) (attempt \(attempt + 1)/\(maxAttempts), done)")
+                return
+            }
+            let ok = self.inputSources.selectInputSource(namedOrIdentifiedBy: target)
+            // TIS 已切但部分 app 的 NSTextInputContext 不会立即同步（用户按键才切）。
+            // 用 Finder 做焦点弹跳：原 app 真正失焦→重获焦点，强制刷新到新 IME。
+            self.flushInputContext()
+            self.logger.log("restore: select \(target) ok=\(ok) + focus flush (was \(current), attempt \(attempt + 1)/\(maxAttempts))")
             if attempt + 1 < maxAttempts {
                 self.restoreStep(target: target, attempt: attempt + 1, session: session)
             }
+        }
+    }
+
+    /// 用 Finder 做一次焦点弹跳：让原 app 真正失焦再重获焦点，
+    /// 强制其 NSTextInputContext 重新同步到已切换的输入法（解决 TIS 已切、上下文滞后的"按键才生效"问题）
+    private func flushInputContext() {
+        let original = appToReactivate
+        let originalWindow = windowToReactivate
+        guard let finder = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first else {
+            original?.activate(options: [.activateIgnoringOtherApps])
+            return
+        }
+        finder.activate(options: [.activateIgnoringOtherApps])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            guard let self else { return }
+            original?.activate(options: [.activateIgnoringOtherApps])
+            if let w = originalWindow {
+                AXUIElementSetAttributeValue(w, kAXMainAttribute as CFString, kCFBooleanTrue)
+                AXUIElementSetAttributeValue(w, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+            }
+            self.logger.log("focus flush done: back to \(original?.bundleIdentifier ?? "?")")
         }
     }
 
@@ -525,7 +553,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @main
-enum DoubaoVoiceBridgeMain {
+enum RimeDouMain {
     static func main() {
         let app = NSApplication.shared
         let delegate = AppDelegate()
@@ -710,7 +738,7 @@ private final class PermissionWindowController: NSWindowController, NSWindowDele
     private let inputMonitoringStatus = NSTextField(labelWithString: "")
     private let accessibilityAction = CallbackButton(title: "Allow")
     private let inputMonitoringAction = CallbackButton(title: "Allow")
-    private let enableButton = NSButton(title: "Enable Bridge", target: nil, action: nil)
+    private let enableButton = NSButton(title: "Enable RimeDou", target: nil, action: nil)
 
     init(
         isStartupGate: Bool,
@@ -734,7 +762,7 @@ private final class PermissionWindowController: NSWindowController, NSWindowDele
             backing: .buffered,
             defer: false
         )
-        window.title = "DoubaoVoiceBridge Permissions"
+        window.title = "RimeDou Permissions"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.center()
@@ -769,19 +797,19 @@ private final class PermissionWindowController: NSWindowController, NSWindowDele
         let appIcon = PermissionHeroIconView()
         appIcon.translatesAutoresizingMaskIntoConstraints = false
 
-        let title = NSTextField(labelWithString: "Enable Doubao Voice Bridge")
+        let title = NSTextField(labelWithString: "Enable RimeDou")
         title.font = .systemFont(ofSize: 30, weight: .bold)
         title.alignment = .center
         title.lineBreakMode = .byWordWrapping
 
-        let message = NSTextField(wrappingLabelWithString: "Doubao Voice Bridge needs these permissions to listen for the trigger hotkey and return focus after voice input. They are only used while the bridge is running.")
+        let message = NSTextField(wrappingLabelWithString: "RimeDou needs these permissions to detect the trigger hotkey and switch back to your normal input method after voice input. They are only used while RimeDou is running.")
         message.font = .systemFont(ofSize: 16)
         message.textColor = .secondaryLabelColor
         message.alignment = .center
 
         let accessibilityRow = permissionRow(
             title: "Accessibility",
-            detail: "Allows Doubao Voice Bridge to restore the app you were using after switching input.",
+            detail: "Allows RimeDou to return to the app you were using after voice input.",
             statusLabel: accessibilityStatus,
             actionButton: accessibilityAction,
             symbolName: "accessibility",
@@ -794,7 +822,7 @@ private final class PermissionWindowController: NSWindowController, NSWindowDele
 
         let inputMonitoringRow = permissionRow(
             title: "Input Monitoring",
-            detail: "Allows the bridge to detect your configured push-to-talk trigger.",
+            detail: "Allows RimeDou to detect your configured trigger hotkey.",
             statusLabel: inputMonitoringStatus,
             actionButton: inputMonitoringAction,
             symbolName: "keyboard",

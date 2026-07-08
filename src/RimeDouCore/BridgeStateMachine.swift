@@ -1,9 +1,3 @@
-/**
- * [INPUT]: 依赖 Foundation 的 Sendable 基础类型
- * [OUTPUT]: 对外提供 BridgeState、BridgeEvent、BridgeAction、BridgeStateMachine
- * [POS]: DoubaoVoiceBridgeCore 的会话状态核心（全局唤起 toggle 版）：点按切换语音开关
- * [PROTOCOL]: 变更时更新此头部，然后检查 codex.md
- */
 import Foundation
 
 public enum BridgeState: Equatable, Sendable {
@@ -36,7 +30,7 @@ public struct BridgeStateMachine: Sendable {
     public mutating func handle(_ event: BridgeEvent) -> [BridgeAction] {
         switch (state, event) {
         case (.idle, .triggerTap):
-            // 点按开始：豆包全局唤起自己切到自己 + 开语音，DVB 无需切输入法
+            // 点按开始：豆包全局唤起自己切到自己 + 开语音，RimeDou 无需切输入法
             state = .voiceActive
             return [.startVoiceSession]
         case (.idle, .externalVoiceEnd):
@@ -47,7 +41,7 @@ public struct BridgeStateMachine: Sendable {
             state = .idle
             return [.stopVoice, .restorePreviousInputMethod]
         case (.voiceActive, .externalVoiceEnd):
-            // 用任意键（空格/字母/其他修饰键）停止：豆包已自己结束，DVB 只需还原
+            // 用任意键（空格/字母/其他修饰键）停止：豆包已自己结束，RimeDou 只需还原
             state = .idle
             return [.restorePreviousInputMethod]
         case (_, .reset):

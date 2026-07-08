@@ -1,11 +1,5 @@
-/**
- * [INPUT]: 依赖 XCTest、DoubaoVoiceBridgeCore 的 BridgeConfig/BridgeHotkey/BridgeKey
- * [OUTPUT]: 对外提供 BridgeConfig 默认值、JSON 解析、快捷键解析、tapDuration 向后兼容等测试用例
- * [POS]: DoubaoVoiceBridgeCoreTests 的配置测试文件，覆盖 BridgeConfig 的所有加载路径
- * [PROTOCOL]: 变更时更新此头部，然后检查 codex.md
- */
 import XCTest
-@testable import DoubaoVoiceBridgeCore
+@testable import RimeDouCore
 
 final class BridgeConfigTests: XCTestCase {
     func testDefaultConfigMatchesProjectTimingSpec() {
@@ -89,7 +83,7 @@ final class BridgeConfigTests: XCTestCase {
         try fileManager.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
 
         let userConfigURL = tempDirectory
-            .appendingPathComponent("Application Support/DoubaoVoiceBridge/config.json")
+            .appendingPathComponent("Application Support/RimeDou/config.json")
         let templateURL = tempDirectory.appendingPathComponent("template-config.json")
         try """
         {
@@ -118,7 +112,7 @@ final class BridgeConfigTests: XCTestCase {
         try fileManager.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
 
         let userConfigURL = tempDirectory
-            .appendingPathComponent("Application Support/DoubaoVoiceBridge/config.json")
+            .appendingPathComponent("Application Support/RimeDou/config.json")
         let templateURL = tempDirectory.appendingPathComponent("template-config.json")
         try fileManager.createDirectory(
             at: userConfigURL.deletingLastPathComponent(),
@@ -154,7 +148,7 @@ final class BridgeConfigTests: XCTestCase {
         try fileManager.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
 
         let userConfigURL = tempDirectory
-            .appendingPathComponent("Application Support/DoubaoVoiceBridge/config.json")
+            .appendingPathComponent("Application Support/RimeDou/config.json")
 
         defer {
             try? fileManager.removeItem(at: tempDirectory)

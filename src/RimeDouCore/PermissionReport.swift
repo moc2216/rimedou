@@ -60,6 +60,6 @@ public struct PermissionReport: Equatable, Sendable {
         default:
             joined = names.dropLast().joined(separator: ", ") + ", and \(names.last!)"
         }
-        return "DoubaoVoiceBridge needs \(joined) permissions before the trigger hotkey can start voice input."
+        return "RimeDou needs \(joined) permissions before the trigger hotkey can start voice input."
     }
 }

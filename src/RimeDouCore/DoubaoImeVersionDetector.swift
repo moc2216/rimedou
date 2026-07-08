@@ -1,9 +1,3 @@
-/**
- * [INPUT]: 依赖 Foundation 的 Bundle 路径与 Info.plist 读取能力
- * [OUTPUT]: 对外提供 DoubaoImeVoiceStrategy 与 DoubaoImeVersionDetector
- * [POS]: DoubaoVoiceBridgeCore 的豆包版本协议层，隔离版本探测与语音触发策略选择
- * [PROTOCOL]: 变更时更新此头部，然后检查 codex.md
- */
 import Foundation
 
 public enum DoubaoImeVoiceStrategy: Equatable, Sendable {

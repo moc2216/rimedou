@@ -1,11 +1,5 @@
-/**
- * [INPUT]: 依赖 XCTest 的断言能力，依赖 DoubaoVoiceBridgeCore 的 BridgeStateMachine
- * [OUTPUT]: 对外提供全局唤起 toggle 状态机的行为回归测试
- * [POS]: Tests/DoubaoVoiceBridgeCoreTests 的核心状态测试，约束点按生命周期与恢复动作
- * [PROTOCOL]: 变更时更新此头部，然后检查 codex.md
- */
 import XCTest
-@testable import DoubaoVoiceBridgeCore
+@testable import RimeDouCore
 
 final class BridgeStateMachineTests: XCTestCase {
     func testTapFromIdleStartsVoice() {

@@ -1,11 +1,5 @@
-/**
- * [INPUT]: 依赖 XCTest 的断言能力，依赖 DoubaoVoiceBridgeCore 的豆包版本探测与策略选择
- * [OUTPUT]: 对外提供 DoubaoImeVersionDetector 与 DoubaoImeVoiceStrategy 的行为回归测试
- * [POS]: Tests/DoubaoVoiceBridgeCoreTests 的版本协议测试，保护 0.9.2 前后触发策略分流
- * [PROTOCOL]: 变更时更新此头部，然后检查 codex.md
- */
 import XCTest
-@testable import DoubaoVoiceBridgeCore
+@testable import RimeDouCore
 
 final class DoubaoImeVersionTests: XCTestCase {
     func testVersionsBeforeZeroNineTwoUseLegacyHoldTrigger() {

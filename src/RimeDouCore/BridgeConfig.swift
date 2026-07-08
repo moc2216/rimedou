@@ -1,9 +1,3 @@
-/**
- * [INPUT]: 依赖 Foundation 的 JSONDecoder/Data
- * [OUTPUT]: 对外提供 BridgeKey、BridgeHotkey、BridgeConfig、PartialBridgeConfig 类型与 JSON 加载/默认配置模板
- * [POS]: DoubaoVoiceBridgeCore 的配置层，被 main.swift 入口消费；定义所有可调时序参数与快捷键解析
- * [PROTOCOL]: 变更时更新此头部，然后检查 codex.md
- */
 import Foundation
 
 public enum BridgeKey: Equatable, Hashable, Sendable {
@@ -142,7 +136,7 @@ public struct BridgeConfig: Equatable, Sendable {
         optionWarmupToHoldDelay: 0.22,
         tapDuration: 0.15,
         triggerHotkey: BridgeHotkey(keys: [.rightCommand]),
-        voiceHotkey: BridgeHotkey(keys: [.leftOption])
+        voiceHotkey: BridgeHotkey(keys: [.rightControl])
     )
 
     public static func load(from data: Data) throws -> BridgeConfig {
@@ -198,7 +192,7 @@ public struct BridgeConfig: Equatable, Sendable {
             .appendingPathComponent("Library/Application Support", isDirectory: true)
 
         return applicationSupportURL
-            .appendingPathComponent("DoubaoVoiceBridge", isDirectory: true)
+            .appendingPathComponent("RimeDou", isDirectory: true)
             .appendingPathComponent("config.json")
     }
 

@@ -11,5 +11,5 @@
   "optionWarmupToHoldDelay": 0.22,
   "tapDuration": 0.15,
   "triggerHotkey": "RightCommand",
-  "voiceHotkey": "LeftOption"
+  "voiceHotkey": "RightControl"
 }

@@ -1,5 +1,5 @@
 import XCTest
-@testable import DoubaoVoiceBridgeCore
+@testable import RimeDouCore
 
 final class PermissionReportTests: XCTestCase {
     func testReportIsReadyWhenAllRequiredPermissionsAreGranted() {
@@ -14,7 +14,7 @@ final class PermissionReportTests: XCTestCase {
 
         XCTAssertFalse(report.isReady)
         XCTAssertEqual(report.missingPermissions, [.accessibility, .inputMonitoring])
-        XCTAssertEqual(report.message, "DoubaoVoiceBridge needs Accessibility and Input Monitoring permissions before the trigger hotkey can start voice input.")
+        XCTAssertEqual(report.message, "RimeDou needs Accessibility and Input Monitoring permissions before the trigger hotkey can start voice input.")
     }
 
     func testSettingsURLsPointAtMatchingPrivacyPanes() {
