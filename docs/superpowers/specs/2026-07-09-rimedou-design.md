@@ -30,7 +30,7 @@
 - 日志文件 `~/Library/Logs/rimedou/app.log`。
 
 ### 移除
-- old brand strings (DoubaoVoiceBridge), old directory names, old comments.
+- old brand strings, old directory names, old comments.
 - LaunchAgent 模块及相关脚本（`install-launch-agent.sh`、`launch-agent-status.sh`、`uninstall-launch-agent.sh`）。
 - `DoubaoImeVoiceStrategy`（holdHotkey / tapHotkey 策略判断）。
 - `optionWarmupTapDuration`、`optionWarmupToHoldDelay`、`postSwitchSettleDelay` 等废弃配置项。
@@ -78,7 +78,7 @@ rimedou/
 
 ### 模块职责
 
-> 命名约定：用户可见的产品名、可执行文件名、配置/日志目录统一使用小写 `rimedou`；`RimeDouCore` 作为 Swift 库模块名保留 PascalCase 写法，仅为符合 Swift 命名惯例，不含 old brand（DoubaoVoiceBridge）等品牌残留。
+> 命名约定：用户可见的产品名、可执行文件名、配置/日志目录统一使用小写 `rimedou`；`RimeDouCore` 作为 Swift 库模块名保留 PascalCase 写法，仅为符合 Swift 命名惯例，不含旧品牌残留。
 
 | 模块 | 职责 |
 |---|---|
@@ -195,7 +195,7 @@ public final class KeyboardEngine: @unchecked Sendable {
 - 每行显示当前授权状态 + 「Open System Settings」按钮。
 - 全部授权后显示「Enable rimedou」按钮，点击后窗口关闭，应用进入后台菜单栏模式。
 
-所有文案统一使用 `rimedou`，不再出现 old brand（DoubaoVoiceBridge）、`RimeDou`、`豆` 等品牌字样（菜单栏图标除外）。
+所有文案统一使用 `rimedou`，不再出现旧品牌（`RimeDou`、旧产品名等）、`豆` 等品牌字样（菜单栏图标除外）。
 
 ## 9. 错误处理
 
@@ -254,7 +254,7 @@ public final class KeyboardEngine: @unchecked Sendable {
 
 - [ ] `swift build` 成功，无警告。
 - [ ] `swift test` 全部通过。
-- [ ] 项目内不再出现 old brand（DoubaoVoiceBridge）字符串。
+- [ ] 项目内不再出现旧品牌字符串。
 - [ ] 菜单栏点按右 Cmd 可稳定唤起豆包语音。
 - [ ] 语音结束后自动切回 RIME。
 - [ ] 权限窗口首次引导正常。
