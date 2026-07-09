@@ -1,5 +1,4 @@
 import XCTest
-import Carbon
 @testable import RimeDouCore
 
 final class KeyboardEngineTests: XCTestCase {
