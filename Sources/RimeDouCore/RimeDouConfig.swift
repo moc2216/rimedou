@@ -20,25 +20,29 @@ public enum Key: Equatable, Hashable, Sendable, Encodable {
         }
     }
 
+    public var stringRepresentation: String {
+        switch self {
+        case .leftShift: return "LeftShift"
+        case .rightShift: return "RightShift"
+        case .shift: return "Shift"
+        case .leftControl: return "LeftControl"
+        case .rightControl: return "RightControl"
+        case .control: return "Control"
+        case .leftOption: return "LeftOption"
+        case .rightOption: return "RightOption"
+        case .option: return "Option"
+        case .leftCommand: return "LeftCommand"
+        case .rightCommand: return "RightCommand"
+        case .command: return "Command"
+        case .tab: return "Tab"
+        case .space: return "Space"
+        case .character(let c): return c
+        }
+    }
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
-        switch self {
-        case .leftShift: try container.encode("leftShift")
-        case .rightShift: try container.encode("rightShift")
-        case .shift: try container.encode("shift")
-        case .leftControl: try container.encode("leftControl")
-        case .rightControl: try container.encode("rightControl")
-        case .control: try container.encode("control")
-        case .leftOption: try container.encode("leftOption")
-        case .rightOption: try container.encode("rightOption")
-        case .option: try container.encode("option")
-        case .leftCommand: try container.encode("leftCommand")
-        case .rightCommand: try container.encode("rightCommand")
-        case .command: try container.encode("command")
-        case .tab: try container.encode("tab")
-        case .space: try container.encode("space")
-        case .character(let c): try container.encode("character(\(c))")
-        }
+        try container.encode(stringRepresentation)
     }
 }
 
@@ -47,6 +51,10 @@ public struct Hotkey: Equatable, Sendable, Encodable {
 
     public init(keys: [Key]) {
         self.keys = keys
+    }
+
+    public var stringRepresentation: String {
+        keys.map(\.stringRepresentation).joined(separator: "+")
     }
 
     public static func parse(_ value: String) -> Hotkey? {
@@ -105,6 +113,31 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
     public var tapDuration: TimeInterval
     public var triggerHotkey: Hotkey
     public var voiceHotkey: Hotkey
+
+    private enum CodingKeys: String, CodingKey {
+        case restoreDelay
+        case switchPollInterval
+        case switchWaitTimeout
+        case focusBounceBackDelay
+        case focusBounceSettleDelay
+        case tapMaxDuration
+        case tapDuration
+        case triggerHotkey
+        case voiceHotkey
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(restoreDelay, forKey: .restoreDelay)
+        try container.encode(switchPollInterval, forKey: .switchPollInterval)
+        try container.encode(switchWaitTimeout, forKey: .switchWaitTimeout)
+        try container.encode(focusBounceBackDelay, forKey: .focusBounceBackDelay)
+        try container.encode(focusBounceSettleDelay, forKey: .focusBounceSettleDelay)
+        try container.encode(tapMaxDuration, forKey: .tapMaxDuration)
+        try container.encode(tapDuration, forKey: .tapDuration)
+        try container.encode(triggerHotkey.stringRepresentation, forKey: .triggerHotkey)
+        try container.encode(voiceHotkey.stringRepresentation, forKey: .voiceHotkey)
+    }
 
     public static let `default` = RimeDouConfig(
         restoreDelay: 0.50,
