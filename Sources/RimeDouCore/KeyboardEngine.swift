@@ -87,7 +87,6 @@ public final class KeyboardEngine {
     private let triggerDetector: TriggerDetector
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var voiceStartedAt: Date?
     private var voiceStartedUptime: TimeInterval?
     public weak var delegate: KeyboardEngineDelegate?
 
@@ -102,6 +101,10 @@ public final class KeyboardEngine {
     }
 
     public func start() -> Bool {
+        guard eventTap == nil else {
+            logger.log("keyboard engine already started")
+            return true
+        }
         let mask = (1 << CGEventType.flagsChanged.rawValue)
             | (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
@@ -146,13 +149,11 @@ public final class KeyboardEngine {
         }
     }
 
-    public func markVoiceStarted(at date: Date) {
-        voiceStartedAt = date
-        voiceStartedUptime = ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970 - date.timeIntervalSince1970)
+    public func markVoiceStarted() {
+        voiceStartedUptime = ProcessInfo.processInfo.systemUptime
     }
 
     public func resetVoiceStartTime() {
-        voiceStartedAt = nil
         voiceStartedUptime = nil
     }
 
@@ -219,6 +220,14 @@ public final class KeyboardEngine {
 }
 
 private let keyboardEngineEventTapCallback: CGEventTapCallBack = { _, type, event, refcon in
+    // NOTE: This callback runs on the HID thread. We currently `DispatchQueue.main.sync`
+    // to ensure synchronous access to MainActor-isolated `KeyboardEngine` state and to
+    // return a definitive pass/swallow decision to CGEvent. This blocks the HID thread.
+    // A non-blocking design would require either a listen-only tap plus asynchronous
+    // re-posting (losing precise event ordering) or a full state machine that can make
+    // synchronous swallow decisions from this thread while deferring side effects. That
+    // refactor is larger than the current scope, so the sync hop remains as intentional
+    // technical debt.
     guard let refcon else { return Unmanaged.passUnretained(event) }
     let engine = Unmanaged<KeyboardEngine>.fromOpaque(refcon).takeUnretainedValue()
     // CGEvent and Unmanaged<CGEvent> are not Sendable, so they cannot be passed directly
