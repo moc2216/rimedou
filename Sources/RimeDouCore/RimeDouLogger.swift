@@ -14,6 +14,10 @@ public final class RimeDouLogger: @unchecked Sendable {
         )
     }
 
+    public convenience init() {
+        self.init(url: Self.defaultLogURL)
+    }
+
     public static var defaultLogURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Logs/rimedou/app.log")
