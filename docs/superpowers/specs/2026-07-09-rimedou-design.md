@@ -57,37 +57,22 @@ rimedou/
 ├── support/
 │   └── Info.plist
 ├── Sources/
-│   ├── rimedou/
+│   ├── rimedou/                          # 可执行入口
 │   │   ├── main.swift
-│   │   └── AppDelegate.swift
-│   └── RimeDouCore/
-│       ├── Config/
-│       │   ├── RimeDouConfig.swift
-│       │   ├── Hotkey.swift
-│       │   └── ConfigLoader.swift
-│       ├── State/
-│       │   └── VoiceStateMachine.swift
-│       ├── Events/
-│       │   ├── EventTap.swift
-│       │   └── TriggerDetector.swift
-│       ├── Voice/
-│       │   ├── VoiceSession.swift
-│       │   └── HotkeySynthesizer.swift
-│       ├── Input/
-│       │   └── InputMethodController.swift
-│       ├── Focus/
-│       │   └── FocusBouncer.swift
-│       ├── Permissions/
-│       │   ├── PermissionReport.swift
-│       │   └── PermissionsWindowController.swift
-│       └── Logging/
-│           └── RimeDouLogger.swift
+│   │   ├── AppDelegate.swift             # 菜单栏、权限窗口、生命周期
+│   │   └── PermissionsWindowController.swift
+│   └── RimeDouCore/                      # 核心库，只保留必要模块
+│       ├── RimeDouConfig.swift           # 配置模型 + Hotkey 解析
+│       ├── VoiceStateMachine.swift       # 状态机
+│       ├── KeyboardEngine.swift          # 事件监听 + 触发判定 + 热键合成
+│       ├── InputMethodController.swift   # 输入法切换 + 焦点弹跳
+│       ├── PermissionReport.swift        # 权限检测
+│       └── RimeDouLogger.swift           # 日志
 └── Tests/
     └── RimeDouCoreTests/
         ├── ConfigTests.swift
         ├── StateMachineTests.swift
-        ├── TriggerDetectorTests.swift
-        ├── HotkeySynthesizerTests.swift
+        ├── KeyboardEngineTests.swift
         └── InputMethodControllerTests.swift
 ```
 
@@ -97,39 +82,34 @@ rimedou/
 
 | 模块 | 职责 |
 |---|---|
-| `rimedou` | 可执行入口。创建 `NSApplication`、组装 `RimeDouController`、安装菜单栏、处理应用生命周期。 |
-| `RimeDouConfig` | 配置模型、默认值、JSON 解析、用户配置模板生成。 |
-| `Hotkey` / `Key` | 热键解析（`RightCommand+Space`）与键码映射。 |
+| `rimedou` | 可执行入口。创建 `NSApplication`、安装菜单栏、显示权限窗口、处理应用生命周期。 |
+| `RimeDouConfig` | 配置模型、默认值、JSON 解析、用户配置模板生成；包含 `Hotkey`/`Key` 解析与键码映射。 |
 | `VoiceStateMachine` | 管理 `idle` ↔ `voiceActive`，输出动作指令。 |
-| `EventTap` | 安装/卸载 CGEvent tap，接收原始事件并分发。 |
-| `TriggerDetector` | 判定用户按键是否为一次干净点按。 |
-| `VoiceSession` | 管理单次语音会话上下文：原输入法、原应用/窗口、开始时间、sessionID。 |
-| `HotkeySynthesizer` | 把配置的热键转换为 CGEvent 序列并发送。 |
-| `InputMethodController` | 读取当前输入法名称、选择目标输入法。 |
-| `FocusBouncer` | 通过 Finder 焦点弹跳强制刷新应用的 `NSTextInputContext`。 |
-| `PermissionsWindowController` | 权限引导窗口 UI。 |
+| `KeyboardEngine` | 安装 CGEvent tap、判定触发键点按、合成并发送语音热键。 |
+| `InputMethodController` | 读取当前输入法、选择目标输入法、通过 Finder 焦点弹跳强制刷新输入上下文。 |
+| `PermissionReport` | 检测 Accessibility 与 Input Monitoring 授权状态。 |
+| `PermissionsWindowController` | 权限引导窗口 UI（位于 app 目标）。 |
 | `RimeDouLogger` | 文件日志。 |
 
 ## 5. 核心数据流
 
-1. **用户点按右 Cmd**：`EventTap` 捕获 `keyDown` / `keyUp` / `flagsChanged`。
-2. **触发判定**：`TriggerDetector` 在 `keyUp` 时判断是否满足：
+1. **用户点按右 Cmd**：`KeyboardEngine` 通过 CGEvent tap 捕获 `keyDown` / `keyUp` / `flagsChanged`。
+2. **触发判定**：`KeyboardEngine` 在 `keyUp` 时判断是否满足：
    - 期间未按其他键；
    - 按下到松开时长 ≤ `tapMaxDuration`。
    满足则输出 `triggerTap`。
 3. **状态机响应**：`VoiceStateMachine` 从 `idle` 收到 `triggerTap`，输出 `startVoiceSession`。
 4. **开始语音会话**：
-   - 生成新的 `VoiceSession`（包含 sessionID、原输入法、原应用/窗口、开始时间）。
+   - 生成新的 sessionID，记录原输入法、原应用/窗口、开始时间。
    - 若当前输入法不是豆包，记录原输入法作为还原目标；若已是豆包，则还原目标固定为 `Squirrel`。
-   - `HotkeySynthesizer` 向系统发送一次 `voiceHotkey`（默认 RightControl）点按，持续 `tapDuration`。
+   - `KeyboardEngine` 向系统发送一次 `voiceHotkey`（默认 RightControl）点按，持续 `tapDuration`。
 5. **豆包响应**：自切到豆包输入法并打开语音弹窗。
 6. **停止信号**：
    - 用户再点按右 Cmd → `triggerTap` → 状态机输出 `[stopVoice, restoreInputMethod]`。
    - 用户按空格/字母/其他修饰键 → `externalVoiceEnd`（仅在语音开始 0.5s 后生效，过滤合成键噪声）→ 状态机输出 `[restoreInputMethod]`。
 7. **输入法还原**：
-   - 若 `triggerTap`，先再发一次 `voiceHotkey` 让豆包停止。
-   - `InputMethodController` 选择目标输入法。
-   - `FocusBouncer` 激活 Finder 再切回原应用/窗口，强制刷新输入上下文。
+   - 若 `triggerTap`，`KeyboardEngine` 再发一次 `voiceHotkey` 让豆包停止。
+   - `InputMethodController` 选择目标输入法，并激活 Finder 再切回原应用/窗口，强制刷新输入上下文。
    - 最多轮询 8 次，每次间隔 0.25s，覆盖豆包上屏期间的反复重抢。
 8. **状态回到 `idle`**，等待下一次点按。
 
@@ -148,37 +128,24 @@ public struct VoiceStateMachine {
 }
 ```
 
-### 触发判定
+### 键盘引擎
 
 ```swift
-public enum TriggerResult {
-    case triggerTap
-    case cancelled(reason: TriggerCancellationReason)
-    case ignored
-}
+public final class KeyboardEngine: @unchecked Sendable {
+    public init(config: RimeDouConfig, logger: RimeDouLogger)
 
-public enum TriggerCancellationReason {
-    case heldTooLong
-    case otherKeyPressed
-}
+    /// 安装事件监听，开始捕获按键事件
+    public func start() -> Bool
 
-public final class TriggerDetector {
-    public init(triggerHotkey: Hotkey, tapMaxDuration: TimeInterval, logger: RimeDouLogger)
-    public func process(event: KeyboardEvent) -> TriggerResult
+    /// 卸载事件监听
+    public func stop()
+
+    /// 发送一次语音热键点按（用于开始或停止语音）
+    public func sendVoiceHotkey()
 }
 ```
 
-### 语音会话
-
-```swift
-public final class VoiceSession {
-    public let id: UUID
-    public let originalInputMethod: String
-    public let originalApplication: NSRunningApplication?
-    public let originalWindow: AXUIElement?
-    public let startedAt: Date
-}
-```
+`KeyboardEngine` 内部封装事件 tap、触发判定和热键合成，对外只暴露开始/停止/发送语音键三个动作。
 
 ## 7. 配置
 
@@ -207,7 +174,7 @@ public final class VoiceSession {
 
 ### 菜单栏
 
-菜单栏图标继续使用「豆」。点击后菜单项：
+菜单栏图标使用纯文字「豆」，不需要额外图标资源。点击后菜单项：
 
 - Enable Key Capture（勾选状态）
 - 分隔线
@@ -249,8 +216,7 @@ public final class VoiceSession {
 
 - `ConfigTests`：配置解析、默认值、部分 JSON 覆盖、用户模板生成。
 - `StateMachineTests`：点按开始、再点按停止、任意键停止、reset。
-- `TriggerDetectorTests`：干净点按、组合键取消、长按不触发、其他键忽略。
-- `HotkeySynthesizerTests`：热键解析为 CGEvent 序列的正确性（不实际 post）。
+- `KeyboardEngineTests`：触发判定（干净点按、组合键取消、长按不触发）、热键事件序列生成。
 - `InputMethodControllerTests`：输入法名称匹配逻辑（mock TIS 输入源列表）。
 
 ### 手动测试（必须）
