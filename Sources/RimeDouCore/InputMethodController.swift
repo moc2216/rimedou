@@ -3,7 +3,8 @@ import ApplicationServices
 import Carbon
 import Foundation
 
-public final class InputMethodController: @unchecked Sendable {
+@MainActor
+public final class InputMethodController {
     private let logger: RimeDouLogger
 
     public init(logger: RimeDouLogger) {
@@ -26,7 +27,6 @@ public final class InputMethodController: @unchecked Sendable {
         return TISSelectInputSource(source) == noErr
     }
 
-    @MainActor
     public func restoreInputMethod(
         _ target: String,
         originalApp: NSRunningApplication?,
@@ -39,11 +39,7 @@ public final class InputMethodController: @unchecked Sendable {
 
         func step(attempt: Int) {
             let delay = attempt == 0 ? config.restoreDelay : 0.25
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                guard let self else {
-                    completion()
-                    return
-                }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 let current = self.currentInputMethod()
                 if current == target || current.localizedCaseInsensitiveContains(target) {
                     logger.log("restore: at \(target) (attempt \(attempt + 1)/\(maxAttempts), done)")
@@ -63,15 +59,13 @@ public final class InputMethodController: @unchecked Sendable {
         step(attempt: 0)
     }
 
-    @MainActor
     private func flushInputContext(originalApp: NSRunningApplication?, originalWindow: AXUIElement?) {
         guard let finder = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first else {
             originalApp?.activate(options: [.activateIgnoringOtherApps])
             return
         }
         finder.activate(options: [.activateIgnoringOtherApps])
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-            guard self != nil else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
             originalApp?.activate(options: [.activateIgnoringOtherApps])
             if let window = originalWindow {
                 AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
@@ -82,9 +76,8 @@ public final class InputMethodController: @unchecked Sendable {
 
     private func findInputSource(matching value: String) -> TISInputSource? {
         guard let unmanaged = TISCreateInputSourceList(nil, true) else { return nil }
-        let sources = unmanaged.takeRetainedValue() as NSArray
-        for item in sources {
-            guard let source = item as! TISInputSource? else { continue }
+        guard let sources = unmanaged.takeRetainedValue() as? [TISInputSource] else { return nil }
+        for source in sources {
             let name = propertyString(source, kTISPropertyLocalizedName)
             let identifier = propertyString(source, kTISPropertyInputSourceID)
             if name == value || identifier == value ||
