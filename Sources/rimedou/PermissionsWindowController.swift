@@ -14,6 +14,7 @@ final class PermissionsWindowController: NSWindowController {
     private let onClose: () -> Void
     private var timer: Timer?
 
+    private var messageLabel: NSTextField?
     private var accessibilityStatusLabel: NSTextField?
     private var inputMonitoringStatusLabel: NSTextField?
     private var enableButton: NSButton?
@@ -43,6 +44,8 @@ final class PermissionsWindowController: NSWindowController {
     }
 
     private func buildContentView() -> NSView {
+        let containerView = NSView()
+
         let rootStack = NSStackView()
         rootStack.orientation = .vertical
         rootStack.alignment = .leading
@@ -54,8 +57,9 @@ final class PermissionsWindowController: NSWindowController {
         titleLabel.font = NSFont.boldSystemFont(ofSize: 16)
         rootStack.addArrangedSubview(titleLabel)
 
-        let messageLabel = NSTextField(wrappingLabelWithString: PermissionReport(accessibilityGranted: false, inputMonitoringGranted: false).message)
+        let messageLabel = NSTextField(wrappingLabelWithString: "")
         messageLabel.textColor = .secondaryLabelColor
+        self.messageLabel = messageLabel
         rootStack.addArrangedSubview(messageLabel)
 
         let rowsStack = NSStackView()
@@ -89,7 +93,15 @@ final class PermissionsWindowController: NSWindowController {
         noteLabel.font = NSFont.systemFont(ofSize: 11)
         rootStack.addArrangedSubview(noteLabel)
 
-        return rootStack
+        containerView.addSubview(rootStack)
+        NSLayoutConstraint.activate([
+            rootStack.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            rootStack.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            rootStack.topAnchor.constraint(equalTo: containerView.topAnchor),
+            rootStack.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
+        ])
+
+        return containerView
     }
 
     private func makePermissionRow(
@@ -116,7 +128,7 @@ final class PermissionsWindowController: NSWindowController {
         let openButton = NSButton(title: "Open System Settings", target: self, action: #selector(openSettings(_:)))
         openButton.bezelStyle = .rounded
         openButton.setButtonType(.momentaryPushIn)
-        openButton.tag = PermissionKind.allCases.firstIndex(of: kind) ?? 0
+        openButton.identifier = NSUserInterfaceItemIdentifier(kind.settingsIdentifier)
         row.addArrangedSubview(openButton)
 
         return row
@@ -154,18 +166,22 @@ final class PermissionsWindowController: NSWindowController {
 
     @objc private func updateStatus() {
         let report = reportProvider()
+        messageLabel?.stringValue = report.message
+
         accessibilityStatusLabel?.stringValue = report.accessibilityGranted ? "Granted" : "Not Granted"
+        accessibilityStatusLabel?.textColor = report.accessibilityGranted ? .systemGreen : .systemRed
+
         inputMonitoringStatusLabel?.stringValue = report.inputMonitoringGranted ? "Granted" : "Not Granted"
+        inputMonitoringStatusLabel?.textColor = report.inputMonitoringGranted ? .systemGreen : .systemRed
 
         let ready = report.isReady
         enableButton?.isHidden = !ready
     }
 
     @objc private func openSettings(_ sender: NSButton?) {
-        let index = sender?.tag ?? 0
-        let cases = PermissionKind.allCases
-        guard index >= 0, index < cases.count else { return }
-        NSWorkspace.shared.open(cases[index].settingsURL)
+        guard let rawIdentifier = sender?.identifier?.rawValue,
+              let kind = PermissionKind(settingsIdentifier: rawIdentifier) else { return }
+        NSWorkspace.shared.open(kind.settingsURL)
     }
 
     @objc private func enableTapped() {
@@ -174,5 +190,22 @@ final class PermissionsWindowController: NSWindowController {
         timer?.invalidate()
         timer = nil
         delegate?.permissionsWindowControllerDidBecomeReady(self)
+    }
+}
+
+private extension PermissionKind {
+    var settingsIdentifier: String {
+        switch self {
+        case .accessibility: return "accessibility"
+        case .inputMonitoring: return "inputMonitoring"
+        }
+    }
+
+    init?(settingsIdentifier: String) {
+        switch settingsIdentifier {
+        case "accessibility": self = .accessibility
+        case "inputMonitoring": self = .inputMonitoring
+        default: return nil
+        }
     }
 }
