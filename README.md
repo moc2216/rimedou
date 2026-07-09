@@ -42,7 +42,7 @@ open build/rimedou.app
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
-| `triggerHotkey` | `RightCommand` | 触发键，支持组合（如 `RightCommand+Space`） |
+| `triggerHotkey` | `RightCommand` | 触发键，当前仅支持单键（如 `RightCommand`） |
 | `voiceHotkey` | `RightControl` | 发给豆包的全局语音热键，需与豆包设置一致 |
 | `tapMaxDuration` | `0.35` | 点按最长时长（秒），超过算修饰键使用 |
 | `tapDuration` | `0.15` | 合成语音键的点按时长 |
@@ -52,7 +52,7 @@ open build/rimedou.app
 | `focusBounceBackDelay` | `0.1` | 焦点回弹等待 |
 | `focusBounceSettleDelay` | `0.1` | 焦点稳定等待 |
 
-改完后需重启 rimedou 生效。
+改完后在菜单栏图标点 `Reload Config` 即时生效（或重启）。
 
 ## 运行机制
 

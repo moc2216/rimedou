@@ -34,11 +34,11 @@ public final class InputMethodController {
         config: RimeDouConfig,
         completion: @escaping () -> Void
     ) {
-        let maxAttempts = 8
+        let maxAttempts = max(1, Int(ceil(config.switchWaitTimeout / config.switchPollInterval)))
         let logger = self.logger
 
         func step(attempt: Int) {
-            let delay = attempt == 0 ? config.restoreDelay : 0.25
+            let delay = attempt == 0 ? config.restoreDelay : config.switchPollInterval
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 let current = self.currentInputMethod()
                 if current == target || current.localizedCaseInsensitiveContains(target) {
