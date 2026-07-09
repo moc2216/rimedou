@@ -1,4 +1,4 @@
-# RimeDou
+# rimedou
 
 macOS 菜单栏工具：**点按右 Command 用豆包输入法的语音输入，说完自动切回主输入法（RIME / 鼠须管）**。
 
@@ -16,7 +16,8 @@ macOS 菜单栏工具：**点按右 Command 用豆包输入法的语音输入，
 
 ## 前置条件
 
-- macOS 13+
+- macOS 15.0+
+- Swift 6.0 工具链（Xcode 或 Command Line Tools）
 - 豆包输入法 0.9.3 及以上
 - 豆包设置里：打开「全局唤起语音」开关，全局热键设为**右 Control**
 - 主输入法为 Squirrel（鼠须管 / RIME）
@@ -27,42 +28,50 @@ macOS 菜单栏工具：**点按右 Command 用豆包输入法的语音输入，
 ```bash
 git clone https://github.com/moc2216/rimedou.git
 cd rimedou
+swift build
 ./scripts/build-app.sh
 open build/rimedou.app
 ```
 
-需要 Swift 工具链（Xcode 或 Command Line Tools）。代码签名：默认 ad-hoc；可用 `CODE_SIGN_IDENTITY="证书名"` 指定稳定签名身份。
+- `swift build` 编译可执行文件与 `RimeDouCore` 库。
+- `./scripts/build-app.sh` 生成 `build/rimedou.app` 并完成代码签名；默认使用本地可用的签名身份，未找到则 ad-hoc 签名（`-`）。可用 `CODE_SIGN_IDENTITY="证书名"` 指定稳定签名身份。
 
 ## 配置
 
-用户配置在 `~/Library/Application Support/RimeDou/config.json`，首次启动自动生成。常用项：
+用户配置位于 `~/Library/Application Support/rimedou/config.json`，首次启动会自动生成。常用项：
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
 | `triggerHotkey` | `RightCommand` | 触发键，支持组合（如 `RightCommand+Space`） |
 | `voiceHotkey` | `RightControl` | 发给豆包的全局语音热键，需与豆包设置一致 |
 | `tapMaxDuration` | `0.35` | 点按最长时长（秒），超过算修饰键使用 |
-| `restoreDelay` | `0.5` | 停止后多久开始切回主输入法 |
 | `tapDuration` | `0.15` | 合成语音键的点按时长 |
+| `restoreDelay` | `0.5` | 停止后多久开始切回主输入法 |
+| `switchPollInterval` | `0.05` | 切回主输入法时的轮询间隔 |
+| `switchWaitTimeout` | `2.0` | 切回主输入法的最长等待时间 |
+| `focusBounceBackDelay` | `0.1` | 焦点回弹等待 |
+| `focusBounceSettleDelay` | `0.1` | 焦点稳定等待 |
 
 改完在菜单栏图标点 `Reload Config` 即时生效。
 
 ## 运行机制
 
-1. 点按右 Cmd → RimeDou 合成右 Control → 豆包全局唤起，自切到豆包 + 开语音
+1. 点按右 Cmd → rimedou 合成右 Control → 豆包全局唤起，自切到豆包 + 开语音
 2. 用户说话（实时上屏）
 3. 停止信号（右 Cmd 点按 / 任意键）→ 豆包停止 + 上屏
-4. RimeDou 轮询切回 RIME（覆盖豆包上屏期间的反复重抢）
+4. rimedou 轮询切回 RIME（覆盖豆包上屏期间的反复重抢）
 
 事件 tap 被系统超时禁用时会自动重新启用，避免「按了没反应」。
 
 ## 目录
 
-- `src/RimeDou` — 菜单栏可执行入口
-- `src/RimeDouCore` — 状态机、配置、输入法控制、版本检测
-- `tests/RimeDouTests` — 单元测试
+- `Sources/rimedou` — 菜单栏可执行入口
+- `Sources/RimeDouCore` — 状态机、配置、输入法控制、版本检测
+- `Tests/RimeDouCoreTests` — 单元测试
 - `assets/AppIcon.icns` — 应用图标
+- `support/Info.plist` — 应用 bundle 信息
 - `scripts/build-app.sh` — 编译打包
+- `config.json` — 默认配置模板
 
 ## 许可
 
