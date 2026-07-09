@@ -68,8 +68,14 @@ public final class InputMethodController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
             originalApp?.activate(options: [.activateIgnoringOtherApps])
             if let window = originalWindow {
-                AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
-                AXUIElementSetAttributeValue(window, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+                let mainResult = AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
+                let focusedResult = AXUIElementSetAttributeValue(window, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+                if mainResult != .success {
+                    self.logger.log("flushInputContext: set main attribute failed with \(mainResult)")
+                }
+                if focusedResult != .success {
+                    self.logger.log("flushInputContext: set focused attribute failed with \(focusedResult)")
+                }
             }
         }
     }
@@ -94,7 +100,7 @@ public final class InputMethodController {
         return Unmanaged<CFString>.fromOpaque(value).takeUnretainedValue() as String
     }
 
-    public static func isDoubaoInputMethod(_ name: String) -> Bool {
+    public nonisolated static func isDoubaoInputMethod(_ name: String) -> Bool {
         name.contains("豆包") || name.lowercased().contains("doubao") || name.lowercased().contains("bytedance")
     }
 
