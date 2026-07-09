@@ -5,6 +5,7 @@ import RimeDouCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let config = RimeDouConfig.loadFromDefaultLocation()
     private let logger = RimeDouLogger()
+    // These are `var` / `lazy var` because `logger` must be created first and then passed into the other objects.
     private var stateMachine = VoiceStateMachine()
     private lazy var keyboardEngine = KeyboardEngine(config: config, logger: logger)
     private lazy var inputMethodController = InputMethodController(logger: logger)
