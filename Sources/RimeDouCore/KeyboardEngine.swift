@@ -87,6 +87,7 @@ public final class KeyboardEngine {
     private let triggerDetector: TriggerDetector
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var voiceStartedAt: Date?
     private var voiceStartedUptime: TimeInterval?
     public weak var delegate: KeyboardEngineDelegate?
 
@@ -146,11 +147,12 @@ public final class KeyboardEngine {
     }
 
     public func markVoiceStarted(at date: Date) {
-        _ = date
-        voiceStartedUptime = ProcessInfo.processInfo.systemUptime
+        voiceStartedAt = date
+        voiceStartedUptime = ProcessInfo.processInfo.systemUptime - (Date().timeIntervalSince1970 - date.timeIntervalSince1970)
     }
 
     public func resetVoiceStartTime() {
+        voiceStartedAt = nil
         voiceStartedUptime = nil
     }
 
@@ -190,6 +192,7 @@ public final class KeyboardEngine {
            (type == .keyDown || type == .flagsChanged) {
             logger.log("external voice end detected")
             delegate?.keyboardEngineDidDetectExternalVoiceEnd(self)
+            voiceStartedUptime = nil
         }
 
         return shouldSwallowTriggerEvent() && isTriggerKeyCode(keyCode) ? nil : Unmanaged.passUnretained(event)
@@ -219,24 +222,35 @@ private let keyboardEngineEventTapCallback: CGEventTapCallBack = { _, type, even
     guard let refcon else { return Unmanaged.passUnretained(event) }
     let engine = Unmanaged<KeyboardEngine>.fromOpaque(refcon).takeUnretainedValue()
     // CGEvent and Unmanaged<CGEvent> are not Sendable, so they cannot be passed directly
-    // across the MainActor.assumeIsolated boundary. Convert the pointer to a UInt bit-pattern,
+    // across the MainActor boundary. Convert the pointer to a UInt bit-pattern,
     // forward only that value into the isolated closure, and convert it back on both sides.
     let eventAddress = UInt(bitPattern: Unmanaged.passUnretained(event).toOpaque())
-    let resultAddress: UInt? = MainActor.assumeIsolated {
-        let event = Unmanaged<CGEvent>.fromOpaque(UnsafeMutableRawPointer(bitPattern: eventAddress)!).takeUnretainedValue()
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            engine.reenableEventTap()
-            return eventAddress
+    var resultAddress: UInt?
+    DispatchQueue.main.sync {
+        resultAddress = MainActor.assumeIsolated {
+            guard let eventPointer = UnsafeMutableRawPointer(bitPattern: eventAddress) else {
+                return eventAddress
+            }
+            let event = Unmanaged<CGEvent>.fromOpaque(eventPointer).takeUnretainedValue()
+            if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                engine.reenableEventTap()
+                return eventAddress
+            }
+            guard [.flagsChanged, .keyDown, .keyUp].contains(type) else {
+                return eventAddress
+            }
+            guard let returnedEvent = engine.handleKeyboardEvent(event, type: type) else {
+                return nil
+            }
+            return UInt(bitPattern: returnedEvent.toOpaque())
         }
-        guard [.flagsChanged, .keyDown, .keyUp].contains(type) else {
-            return eventAddress
-        }
-        guard let returnedEvent = engine.handleKeyboardEvent(event, type: type) else {
-            return nil
-        }
-        return UInt(bitPattern: returnedEvent.toOpaque())
     }
-    return resultAddress.flatMap { Unmanaged<CGEvent>.fromOpaque(UnsafeMutableRawPointer(bitPattern: $0)!) }
+    return resultAddress.flatMap { address in
+        guard let pointer = UnsafeMutableRawPointer(bitPattern: address) else {
+            return Unmanaged.passUnretained(event)
+        }
+        return Unmanaged<CGEvent>.fromOpaque(pointer)
+    }
 }
 
 // MARK: - Hotkey Synthesis
@@ -282,7 +296,7 @@ final class HotkeySynthesizer: @unchecked Sendable {
     private func postKey(key: Key, down: Bool, releasedKeys: Set<Key>) {
         guard let keyCode = key.keyCodes.first else { return }
         let event = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(keyCode), keyDown: down)
-        event?.flags = flags(for: hotkey)
+        event?.flags = down ? flags(for: hotkey) : remainingFlags(excluding: key, releasedKeys: releasedKeys)
         event?.post(tap: .cghidEventTap)
     }
 
