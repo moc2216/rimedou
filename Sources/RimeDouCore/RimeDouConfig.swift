@@ -153,7 +153,6 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
 
     public static func load(from data: Data) throws -> RimeDouConfig {
         let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .useDefaultKeys
         let partial = try decoder.decode(PartialRimeDouConfig.self, from: data)
         var config = RimeDouConfig.default
         if let value = partial.restoreDelay { config.restoreDelay = value }

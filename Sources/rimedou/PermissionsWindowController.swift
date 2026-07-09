@@ -38,7 +38,7 @@ final class PermissionsWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "rimedou Permissions"
+        window.title = "Enable rimedou"
         window.contentView = buildContentView()
         self.window = window
     }
@@ -187,8 +187,7 @@ final class PermissionsWindowController: NSWindowController {
     @objc private func enableTapped() {
         let report = reportProvider()
         guard report.isReady else { return }
-        timer?.invalidate()
-        timer = nil
+        close()
         delegate?.permissionsWindowControllerDidBecomeReady(self)
     }
 }

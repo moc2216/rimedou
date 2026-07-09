@@ -47,7 +47,7 @@ public final class InputMethodController {
                     return
                 }
                 let ok = self.selectInputMethod(namedOrIdentifiedBy: target)
-                self.flushInputContext(originalApp: originalApp, originalWindow: originalWindow)
+                self.flushInputContext(originalApp: originalApp, originalWindow: originalWindow, config: config)
                 logger.log("restore: select \(target) ok=\(ok) (was \(current), attempt \(attempt + 1)/\(maxAttempts))")
                 if attempt + 1 < maxAttempts {
                     step(attempt: attempt + 1)
@@ -59,22 +59,25 @@ public final class InputMethodController {
         step(attempt: 0)
     }
 
-    private func flushInputContext(originalApp: NSRunningApplication?, originalWindow: AXUIElement?) {
+    private func flushInputContext(originalApp: NSRunningApplication?, originalWindow: AXUIElement?, config: RimeDouConfig) {
         guard let finder = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first else {
             originalApp?.activate(options: [.activateIgnoringOtherApps])
             return
         }
         finder.activate(options: [.activateIgnoringOtherApps])
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + config.focusBounceBackDelay) { [weak self] in
             originalApp?.activate(options: [.activateIgnoringOtherApps])
-            if let window = originalWindow {
-                let mainResult = AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
-                let focusedResult = AXUIElementSetAttributeValue(window, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-                if mainResult != .success {
-                    self.logger.log("flushInputContext: set main attribute failed with \(mainResult)")
-                }
-                if focusedResult != .success {
-                    self.logger.log("flushInputContext: set focused attribute failed with \(focusedResult)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + config.focusBounceSettleDelay) { [weak self] in
+                guard let self else { return }
+                if let window = originalWindow {
+                    let mainResult = AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
+                    let focusedResult = AXUIElementSetAttributeValue(window, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+                    if mainResult != .success {
+                        self.logger.log("flushInputContext: set main attribute failed with \(mainResult)")
+                    }
+                    if focusedResult != .success {
+                        self.logger.log("flushInputContext: set focused attribute failed with \(focusedResult)")
+                    }
                 }
             }
         }

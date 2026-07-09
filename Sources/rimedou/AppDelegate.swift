@@ -3,11 +3,11 @@ import RimeDouCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let config = RimeDouConfig.loadFromDefaultLocation()
+    private var config = RimeDouConfig.loadFromDefaultLocation()
     private let logger = RimeDouLogger()
     // These are `var` / `lazy var` because `logger` must be created first and then passed into the other objects.
     private var stateMachine = VoiceStateMachine()
-    private lazy var keyboardEngine = KeyboardEngine(config: config, logger: logger)
+    private var keyboardEngine: KeyboardEngine
     private lazy var inputMethodController = InputMethodController(logger: logger)
     private var statusItem: NSStatusItem?
     private var permissionWindow: PermissionsWindowController?
@@ -16,6 +16,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var originalApp: NSRunningApplication?
     private var originalWindow: AXUIElement?
     private var enabled = true
+
+    override init() {
+        self.keyboardEngine = KeyboardEngine(config: config, logger: logger)
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -76,8 +81,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func reloadConfig() {
+        keyboardEngine.stop()
+        config = RimeDouConfig.loadFromDefaultLocation()
+        keyboardEngine = KeyboardEngine(config: config, logger: logger)
+        startKeyboardEngine()
         resetState()
-        logger.log("config reload requested")
+        logger.log("config reloaded")
     }
 
     @objc private func checkPermissionsFromMenu() {
@@ -203,7 +212,7 @@ extension AppDelegate: KeyboardEngineDelegate {
 
     private func startVoiceSession() {
         currentSessionID = UUID()
-        keyboardEngine.markVoiceStarted(at: Date())
+        keyboardEngine.markVoiceStarted()
         let current = inputMethodController.currentInputMethod()
         if InputMethodController.isDoubaoInputMethod(current) {
             originalInputMethod = "Squirrel"
