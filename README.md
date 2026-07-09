@@ -52,7 +52,7 @@ open build/rimedou.app
 | `focusBounceBackDelay` | `0.1` | 焦点回弹等待 |
 | `focusBounceSettleDelay` | `0.1` | 焦点稳定等待 |
 
-改完在菜单栏图标点 `Reload Config` 即时生效。
+改完后需重启 rimedou 生效。
 
 ## 运行机制
 
@@ -66,7 +66,7 @@ open build/rimedou.app
 ## 目录
 
 - `Sources/rimedou` — 菜单栏可执行入口
-- `Sources/RimeDouCore` — 状态机、配置、输入法控制、版本检测
+- `Sources/RimeDouCore` — 状态机、配置、键盘事件、输入法控制
 - `Tests/RimeDouCoreTests` — 单元测试
 - `assets/AppIcon.icns` — 应用图标
 - `support/Info.plist` — 应用 bundle 信息
