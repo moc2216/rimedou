@@ -72,19 +72,25 @@ public final class TriggerDetector: @unchecked Sendable {
 }
 
 public protocol KeyboardEngineDelegate: AnyObject {
-    func keyboardEngineDidDetectTriggerTap(_ engine: KeyboardEngine)
-    func keyboardEngineDidDetectExternalVoiceEnd(_ engine: KeyboardEngine)
+    @MainActor func keyboardEngineDidDetectTriggerTap(_ engine: KeyboardEngine)
+    @MainActor func keyboardEngineDidDetectExternalVoiceEnd(_ engine: KeyboardEngine)
 }
 
-public final class KeyboardEngine: @unchecked Sendable {
+@MainActor
+public final class KeyboardEngine {
     private let config: RimeDouConfig
     private let logger: RimeDouLogger
     private let triggerDetector: TriggerDetector
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var activeKeyCodes = Set<Int64>()
+    private var activeSynthesizer: HotkeySynthesizer?
     private var voiceStartedAt: Date?
+    private var voiceStartedUptime: TimeInterval?
     public weak var delegate: KeyboardEngineDelegate?
+
+    deinit {
+        stop()
+    }
 
     public init(config: RimeDouConfig, logger: RimeDouLogger) {
         self.config = config
@@ -121,40 +127,42 @@ public final class KeyboardEngine: @unchecked Sendable {
         return true
     }
 
-    public func stop() {
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
+    public nonisolated func stop() {
+        MainActor.assumeIsolated {
+            guard eventTap != nil || runLoopSource != nil else { return }
+            if let tap = eventTap {
+                CGEvent.tapEnable(tap: tap, enable: false)
+            }
+            if let source = runLoopSource {
+                CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+            }
+            eventTap = nil
+            runLoopSource = nil
+            logger.log("keyboard engine stopped")
         }
-        if let source = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
-        }
-        eventTap = nil
-        runLoopSource = nil
-        logger.log("keyboard engine stopped")
     }
 
     public func sendVoiceHotkey() {
         let synthesizer = HotkeySynthesizer(hotkey: config.voiceHotkey)
-        synthesizer.tap(duration: config.tapDuration, logger: logger)
+        activeSynthesizer = synthesizer
+        synthesizer.tap(duration: config.tapDuration, logger: logger) { [weak self] in
+            self?.activeSynthesizer = nil
+        }
     }
 
     public func markVoiceStarted(at date: Date) {
         voiceStartedAt = date
+        voiceStartedUptime = ProcessInfo.processInfo.systemUptime
     }
 
     public func resetVoiceStartTime() {
         voiceStartedAt = nil
+        voiceStartedUptime = nil
     }
 
     fileprivate func handleKeyboardEvent(_ event: CGEvent, type: CGEventType) -> Unmanaged<CGEvent>? {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        let timestamp = Date().timeIntervalSince1970
-
-        if type == .keyDown {
-            activeKeyCodes.insert(keyCode)
-        } else if type == .keyUp {
-            activeKeyCodes.remove(keyCode)
-        }
+        let timestamp = ProcessInfo.processInfo.systemUptime
 
         let keyboardEvent: KeyboardEvent
         switch type {
@@ -181,8 +189,8 @@ public final class KeyboardEngine: @unchecked Sendable {
 
         // Detect external voice end: any non-trigger key event while voice is active,
         // after a 0.5s silence window to ignore synthetic key noise.
-        if let startedAt = voiceStartedAt,
-           Date().timeIntervalSince(startedAt) > 0.5,
+        if let startedUptime = voiceStartedUptime,
+           ProcessInfo.processInfo.systemUptime - startedUptime > 0.5,
            !isVoiceHotkeyEvent(keyCode),
            !isTriggerKeyCode(keyCode),
            (type == .keyDown || type == .flagsChanged) {
@@ -216,14 +224,22 @@ public final class KeyboardEngine: @unchecked Sendable {
 private let keyboardEngineEventTapCallback: CGEventTapCallBack = { _, type, event, refcon in
     guard let refcon else { return Unmanaged.passUnretained(event) }
     let engine = Unmanaged<KeyboardEngine>.fromOpaque(refcon).takeUnretainedValue()
-    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-        engine.reenableEventTap()
-        return Unmanaged.passUnretained(event)
+    let eventAddress = UInt(bitPattern: Unmanaged.passUnretained(event).toOpaque())
+    let resultAddress: UInt? = MainActor.assumeIsolated {
+        let event = Unmanaged<CGEvent>.fromOpaque(UnsafeMutableRawPointer(bitPattern: eventAddress)!).takeUnretainedValue()
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            engine.reenableEventTap()
+            return eventAddress
+        }
+        guard [.flagsChanged, .keyDown, .keyUp].contains(type) else {
+            return eventAddress
+        }
+        guard let returnedEvent = engine.handleKeyboardEvent(event, type: type) else {
+            return nil
+        }
+        return UInt(bitPattern: returnedEvent.toOpaque())
     }
-    guard [.flagsChanged, .keyDown, .keyUp].contains(type) else {
-        return Unmanaged.passUnretained(event)
-    }
-    return engine.handleKeyboardEvent(event, type: type)
+    return resultAddress.flatMap { Unmanaged<CGEvent>.fromOpaque(UnsafeMutableRawPointer(bitPattern: $0)!) }
 }
 
 // MARK: - Hotkey Synthesis
@@ -236,7 +252,7 @@ final class HotkeySynthesizer: @unchecked Sendable {
         self.hotkey = hotkey
     }
 
-    func tap(duration: TimeInterval, logger: RimeDouLogger) {
+    func tap(duration: TimeInterval, logger: RimeDouLogger, completion: (@MainActor @Sendable () -> Void)? = nil) {
         for key in hotkey.keys where key.isModifier {
             postModifier(key: key, down: true)
         }
@@ -244,15 +260,15 @@ final class HotkeySynthesizer: @unchecked Sendable {
             postKey(key: key, down: true)
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
-            guard let self else { return }
-            for key in self.hotkey.keys.reversed() where !key.isModifier {
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [self] in
+            for key in hotkey.keys.reversed() where !key.isModifier {
                 self.postKey(key: key, down: false)
             }
-            for key in self.hotkey.keys.reversed() where key.isModifier {
+            for key in hotkey.keys.reversed() where key.isModifier {
                 self.postModifier(key: key, down: false)
             }
             logger.log("voice hotkey tap completed")
+            completion?()
         }
     }
 
@@ -268,6 +284,11 @@ final class HotkeySynthesizer: @unchecked Sendable {
         let event = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(keyCode), keyDown: down)
         event?.flags = flags(for: hotkey)
         event?.post(tap: .cghidEventTap)
+    }
+
+    private func remainingFlags(excluding excludedKey: Key) -> CGEventFlags {
+        let remainingKeys = hotkey.keys.filter { $0 != excludedKey }
+        return flags(for: Hotkey(keys: remainingKeys))
     }
 }
 
@@ -344,8 +365,4 @@ private func flags(for hotkey: Hotkey) -> CGEventFlags {
         }
         return result
     }
-}
-
-private func remainingFlags(excluding excludedKey: Key) -> CGEventFlags {
-    excludedKey.keyCodes.first.map { _ in CGEventFlags() } ?? CGEventFlags()
 }
