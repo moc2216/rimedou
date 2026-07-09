@@ -1,14 +1,10 @@
 {
-  "launchAtLogin": false,
   "restoreDelay": 0.5,
-  "postSwitchSettleDelay": 0.25,
-  "switchWaitTimeout": 2.0,
   "switchPollInterval": 0.05,
+  "switchWaitTimeout": 2.0,
   "focusBounceBackDelay": 0.1,
   "focusBounceSettleDelay": 0.1,
   "tapMaxDuration": 0.35,
-  "optionWarmupTapDuration": 0.05,
-  "optionWarmupToHoldDelay": 0.22,
   "tapDuration": 0.15,
   "triggerHotkey": "RightCommand",
   "voiceHotkey": "RightControl"
