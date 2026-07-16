@@ -58,11 +58,16 @@ public struct Hotkey: Equatable, Sendable, Encodable {
     }
 
     public static func parse(_ value: String) -> Hotkey? {
-        let keys = value
+        let components = value
             .split(separator: "+", omittingEmptySubsequences: false)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .compactMap(parseKey)
-        guard !keys.isEmpty else { return nil }
+        guard !components.isEmpty else { return nil }
+
+        var keys: [Key] = []
+        for component in components {
+            guard !component.isEmpty, let key = parseKey(component) else { return nil }
+            keys.append(key)
+        }
         return Hotkey(keys: keys)
     }
 
@@ -155,20 +160,30 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
         let decoder = JSONDecoder()
         let partial = try decoder.decode(PartialRimeDouConfig.self, from: data)
         var config = RimeDouConfig.default
-        if let value = partial.restoreDelay { config.restoreDelay = value }
-        if let value = partial.switchPollInterval { config.switchPollInterval = value }
-        if let value = partial.switchWaitTimeout { config.switchWaitTimeout = value }
-        if let value = partial.focusBounceBackDelay { config.focusBounceBackDelay = value }
-        if let value = partial.focusBounceSettleDelay { config.focusBounceSettleDelay = value }
-        if let value = partial.tapMaxDuration { config.tapMaxDuration = value }
-        if let value = partial.tapDuration { config.tapDuration = value }
-        if let value = partial.triggerHotkey {
-            config.triggerHotkey = Hotkey.parse(value) ?? config.triggerHotkey
+        if let value = partial.restoreDelay, validDelay(value) { config.restoreDelay = value }
+        if let value = partial.switchPollInterval, validDuration(value) { config.switchPollInterval = value }
+        if let value = partial.switchWaitTimeout, validDuration(value) { config.switchWaitTimeout = value }
+        if let value = partial.focusBounceBackDelay, validDelay(value) { config.focusBounceBackDelay = value }
+        if let value = partial.focusBounceSettleDelay, validDelay(value) { config.focusBounceSettleDelay = value }
+        if let value = partial.tapMaxDuration, validDuration(value) { config.tapMaxDuration = value }
+        if let value = partial.tapDuration, validDuration(value) { config.tapDuration = value }
+        if let value = partial.triggerHotkey,
+           let hotkey = Hotkey.parse(value),
+           hotkey.keys.count == 1 {
+            config.triggerHotkey = hotkey
         }
         if let value = partial.voiceHotkey {
             config.voiceHotkey = Hotkey.parse(value) ?? config.voiceHotkey
         }
         return config
+    }
+
+    private static func validDelay(_ value: TimeInterval) -> Bool {
+        value.isFinite && (0...60).contains(value)
+    }
+
+    private static func validDuration(_ value: TimeInterval) -> Bool {
+        value.isFinite && (0.001...60).contains(value)
     }
 
     public static var defaultUserConfigURL: URL {

@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var originalApp: NSRunningApplication?
     private var originalWindow: AXUIElement?
     private var enabled = true
+    private var startupWarmupStarted = false
 
     override init() {
         self.keyboardEngine = KeyboardEngine(config: config, logger: logger)
@@ -57,12 +58,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleEnabled(_ sender: NSMenuItem) {
-        enabled.toggle()
+        if enabled {
+            finishActiveVoiceSessionIfNeeded()
+            keyboardEngine.stop()
+            enabled = false
+        } else {
+            enabled = true
+            startKeyboardEngine()
+        }
         updateMenuItems()
         logger.log(enabled ? "key capture enabled" : "key capture disabled")
-        if !enabled {
-            resetState()
-        }
     }
 
     private func updateMenuItems() {
@@ -81,11 +86,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func reloadConfig() {
+        finishActiveVoiceSessionIfNeeded()
         keyboardEngine.stop()
         config = RimeDouConfig.loadFromDefaultLocation()
         keyboardEngine = KeyboardEngine(config: config, logger: logger)
-        startKeyboardEngine()
-        resetState()
+        if enabled {
+            startKeyboardEngine()
+        }
         logger.log("config reloaded")
     }
 
@@ -100,7 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func checkPermissions() {
         let report = currentPermissionReport()
         if report.isReady {
-            startKeyboardEngine()
+            warmUpInputMethodAndStartKeyboardEngine()
         } else {
             showPermissionWindow()
         }
@@ -164,13 +171,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         logger.log("keyboard engine started")
     }
 
-    private func resetState() {
-        stateMachine.handle(.reset)
-        keyboardEngine.resetVoiceStartTime()
-        originalInputMethod = nil
-        originalApp = nil
-        originalWindow = nil
-        currentSessionID = UUID()
+    private func warmUpInputMethodAndStartKeyboardEngine() {
+        guard !startupWarmupStarted else { return }
+        startupWarmupStarted = true
+        statusItem?.button?.title = "豆…"
+        inputMethodController.warmUpDoubaoInputMethod(config: config) { [weak self] succeeded in
+            guard let self else { return }
+            self.statusItem?.button?.title = self.enabled ? "豆" : "豆-"
+            self.logger.log("startup warmup finished: success=\(succeeded)")
+            if self.enabled {
+                self.startKeyboardEngine()
+            }
+        }
+    }
+
+    private func finishActiveVoiceSessionIfNeeded() {
+        guard stateMachine.state == .voiceActive else { return }
+        for action in stateMachine.handle(.triggerTap) {
+            apply(action)
+        }
     }
 }
 
@@ -178,7 +197,7 @@ extension AppDelegate: PermissionsWindowControllerDelegate {
     func permissionsWindowControllerDidBecomeReady(_ controller: PermissionsWindowController) {
         permissionWindow = nil
         NSApp.setActivationPolicy(.accessory)
-        startKeyboardEngine()
+        warmUpInputMethodAndStartKeyboardEngine()
     }
 }
 
@@ -204,6 +223,7 @@ extension AppDelegate: KeyboardEngineDelegate {
         case .startVoiceSession:
             startVoiceSession()
         case .stopVoice:
+            keyboardEngine.resetVoiceStartTime()
             keyboardEngine.sendVoiceHotkey()
         case .restoreInputMethod:
             restoreInputMethod()
@@ -227,7 +247,12 @@ extension AppDelegate: KeyboardEngineDelegate {
     }
 
     private func restoreInputMethod() {
-        guard let target = originalInputMethod else { return }
+        keyboardEngine.beginInputDeferral()
+        guard let target = originalInputMethod else {
+            stateMachine.handle(.restoreCompleted)
+            keyboardEngine.completeInputDeferral(replay: true)
+            return
+        }
         let session = currentSessionID
         inputMethodController.restoreInputMethod(
             target,
@@ -239,6 +264,8 @@ extension AppDelegate: KeyboardEngineDelegate {
             self.originalInputMethod = nil
             self.originalApp = nil
             self.originalWindow = nil
+            self.stateMachine.handle(.restoreCompleted)
+            self.keyboardEngine.completeInputDeferral(replay: true)
         }
     }
 }
