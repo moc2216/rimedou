@@ -3,11 +3,13 @@ import Foundation
 public enum VoiceState: Equatable, Sendable {
     case idle
     case voiceActive
+    case restoringInputMethod
 }
 
 public enum VoiceEvent: Equatable, Sendable {
     case triggerTap
     case externalVoiceEnd
+    case restoreCompleted
     case reset
 }
 
@@ -33,11 +35,17 @@ public struct VoiceStateMachine: Sendable {
         case (.idle, .externalVoiceEnd):
             return []
         case (.voiceActive, .triggerTap):
-            state = .idle
+            state = .restoringInputMethod
             return [.stopVoice, .restoreInputMethod]
         case (.voiceActive, .externalVoiceEnd):
+            state = .restoringInputMethod
+            return [.stopVoice, .restoreInputMethod]
+        case (.restoringInputMethod, .restoreCompleted):
             state = .idle
-            return [.restoreInputMethod]
+            return []
+        case (_, .restoreCompleted), (.restoringInputMethod, .triggerTap),
+             (.restoringInputMethod, .externalVoiceEnd):
+            return []
         case (_, .reset):
             state = .idle
             return []

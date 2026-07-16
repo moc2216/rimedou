@@ -18,4 +18,22 @@ final class LoggerTests: XCTestCase {
         let content = try String(contentsOf: logURL, encoding: .utf8)
         XCTAssertTrue(content.contains("hello rimedou"), "logged content was: \(content)")
     }
+
+    func testLoggerDropsOldContentBeforeExceedingSizeLimit() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let logURL = tempDir.appendingPathComponent("app.log")
+        let logger = RimeDouLogger(url: logURL, maxFileSize: 80)
+        logger.log(String(repeating: "a", count: 40))
+        logger.log("newest message")
+
+        Thread.sleep(forTimeInterval: 0.1)
+
+        let content = try String(contentsOf: logURL, encoding: .utf8)
+        XCTAssertTrue(content.contains("newest message"), "logged content was: \(content)")
+        XCTAssertFalse(content.contains(String(repeating: "a", count: 40)))
+    }
 }

@@ -4,7 +4,7 @@ import Foundation
 public enum KeyboardEvent: Equatable, Sendable {
     case keyDown(keyCode: Int64, timestamp: TimeInterval)
     case keyUp(keyCode: Int64, timestamp: TimeInterval)
-    case flagsChanged(rawFlags: UInt64, timestamp: TimeInterval)
+    case flagsChanged(keyCode: Int64, rawFlags: UInt64, timestamp: TimeInterval)
 }
 
 public enum TriggerDetectionResult: Equatable, Sendable {
@@ -19,49 +19,109 @@ public enum TriggerCancellationReason: Equatable, Sendable {
     case otherKeyPressed
 }
 
-public final class TriggerDetector: @unchecked Sendable {
+struct DeferredEventBuffer<Event> {
+    private(set) var isActive = false
+    private var events: [Event] = []
+
+    mutating func begin() {
+        guard !isActive else { return }
+        isActive = true
+        events.removeAll(keepingCapacity: true)
+    }
+
+    @discardableResult
+    mutating func append(_ event: Event) -> Bool {
+        guard isActive else { return false }
+        events.append(event)
+        return true
+    }
+
+    mutating func drain() -> [Event] {
+        let drained = events
+        events.removeAll(keepingCapacity: true)
+        isActive = false
+        return drained
+    }
+}
+
+public final class TriggerDetector {
     private let triggerHotkey: Hotkey
     private let tapMaxDuration: TimeInterval
-    private let logger: RimeDouLogger
+    private var activeTriggerKeyCode: Int64?
     private var triggerDownAt: TimeInterval?
     private var otherKeyPressed = false
 
-    public init(triggerHotkey: Hotkey, tapMaxDuration: TimeInterval, logger: RimeDouLogger) {
+    public init(triggerHotkey: Hotkey, tapMaxDuration: TimeInterval) {
         self.triggerHotkey = triggerHotkey
         self.tapMaxDuration = tapMaxDuration
-        self.logger = logger
     }
 
     public func process(event: KeyboardEvent) -> TriggerDetectionResult {
         switch event {
         case .keyDown(let keyCode, let timestamp):
             if isTriggerKeyCode(keyCode) {
-                triggerDownAt = timestamp
-                otherKeyPressed = false
-                return .triggerDown
-            } else {
-                if triggerDownAt != nil {
-                    otherKeyPressed = true
-                    return .cancelled(.otherKeyPressed)
-                }
-                return .ignored
+                return beginTrigger(keyCode: keyCode, timestamp: timestamp)
             }
+            return cancelActiveTrigger()
         case .keyUp(let keyCode, let timestamp):
-            guard isTriggerKeyCode(keyCode), let downAt = triggerDownAt else {
-                return .ignored
+            guard isTriggerKeyCode(keyCode) else { return .ignored }
+            return finishTrigger(keyCode: keyCode, timestamp: timestamp)
+        case .flagsChanged(let keyCode, let rawFlags, let timestamp):
+            guard isTriggerKeyCode(keyCode) else {
+                return cancelActiveTrigger()
             }
-            triggerDownAt = nil
-            if otherKeyPressed {
-                return .cancelled(.otherKeyPressed)
+            if activeTriggerKeyCode == keyCode {
+                return finishTrigger(keyCode: keyCode, timestamp: timestamp)
             }
-            let duration = timestamp - downAt
-            if duration > tapMaxDuration {
-                return .cancelled(.heldTooLong)
-            }
-            return .triggerTap
-        case .flagsChanged:
-            return .ignored
+            guard modifierIsPressed(keyCode: keyCode, rawFlags: rawFlags) else { return .ignored }
+            return beginTrigger(keyCode: keyCode, timestamp: timestamp)
         }
+    }
+
+    func reset() {
+        activeTriggerKeyCode = nil
+        triggerDownAt = nil
+        otherKeyPressed = false
+    }
+
+    private func beginTrigger(keyCode: Int64, timestamp: TimeInterval) -> TriggerDetectionResult {
+        guard activeTriggerKeyCode == nil else {
+            guard activeTriggerKeyCode != keyCode else { return .ignored }
+            otherKeyPressed = true
+            return .cancelled(.otherKeyPressed)
+        }
+        activeTriggerKeyCode = keyCode
+        triggerDownAt = timestamp
+        otherKeyPressed = false
+        return .triggerDown
+    }
+
+    private func finishTrigger(keyCode: Int64, timestamp: TimeInterval) -> TriggerDetectionResult {
+        guard activeTriggerKeyCode == keyCode, let downAt = triggerDownAt else { return .ignored }
+        activeTriggerKeyCode = nil
+        triggerDownAt = nil
+        defer { otherKeyPressed = false }
+        if otherKeyPressed {
+            return .cancelled(.otherKeyPressed)
+        }
+        if timestamp - downAt > tapMaxDuration {
+            return .cancelled(.heldTooLong)
+        }
+        return .triggerTap
+    }
+
+    private func cancelActiveTrigger() -> TriggerDetectionResult {
+        guard activeTriggerKeyCode != nil else { return .ignored }
+        otherKeyPressed = true
+        return .cancelled(.otherKeyPressed)
+    }
+
+    private func modifierIsPressed(keyCode: Int64, rawFlags: UInt64) -> Bool {
+        let matchingKeys = triggerHotkey.keys.filter {
+            $0.isModifier && $0.keyCodes.contains(Int(keyCode))
+        }
+        let expectedFlags = flags(for: Hotkey(keys: matchingKeys)).rawValue
+        return expectedFlags != 0 && rawFlags & expectedFlags != 0
     }
 
     private func isTriggerKeyCode(_ keyCode: Int64) -> Bool {
@@ -88,6 +148,7 @@ public final class KeyboardEngine {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var voiceStartedUptime: TimeInterval?
+    private var deferredEvents = DeferredEventBuffer<CGEvent>()
     public weak var delegate: KeyboardEngineDelegate?
 
     public init(config: RimeDouConfig, logger: RimeDouLogger) {
@@ -95,8 +156,7 @@ public final class KeyboardEngine {
         self.logger = logger
         self.triggerDetector = TriggerDetector(
             triggerHotkey: config.triggerHotkey,
-            tapMaxDuration: config.tapMaxDuration,
-            logger: logger
+            tapMaxDuration: config.tapMaxDuration
         )
     }
 
@@ -130,6 +190,9 @@ public final class KeyboardEngine {
     }
 
     public func stop() {
+        triggerDetector.reset()
+        voiceStartedUptime = nil
+        completeInputDeferral(replay: true)
         guard eventTap != nil || runLoopSource != nil else { return }
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
@@ -144,9 +207,7 @@ public final class KeyboardEngine {
 
     public func sendVoiceHotkey() {
         let synthesizer = HotkeySynthesizer(hotkey: config.voiceHotkey)
-        synthesizer.tap(duration: config.tapDuration, logger: logger) { [logger] in
-            logger.log("voice hotkey tap completed")
-        }
+        synthesizer.tap(duration: config.tapDuration, logger: logger)
     }
 
     public func markVoiceStarted() {
@@ -155,6 +216,24 @@ public final class KeyboardEngine {
 
     public func resetVoiceStartTime() {
         voiceStartedUptime = nil
+    }
+
+    public func beginInputDeferral() {
+        let wasActive = deferredEvents.isActive
+        deferredEvents.begin()
+        if !wasActive {
+            logger.log("input deferral started")
+        }
+    }
+
+    public func completeInputDeferral(replay: Bool) {
+        let events = deferredEvents.drain()
+        guard !events.isEmpty else { return }
+        logger.log("input deferral completed: replay=\(replay) events=\(events.count)")
+        guard replay else { return }
+        for event in events {
+            event.post(tap: .cghidEventTap)
+        }
     }
 
     fileprivate func handleKeyboardEvent(_ event: CGEvent, type: CGEventType) -> Unmanaged<CGEvent>? {
@@ -168,7 +247,11 @@ public final class KeyboardEngine {
         case .keyUp:
             keyboardEvent = .keyUp(keyCode: keyCode, timestamp: timestamp)
         case .flagsChanged:
-            keyboardEvent = .flagsChanged(rawFlags: event.flags.rawValue, timestamp: timestamp)
+            keyboardEvent = .flagsChanged(
+                keyCode: keyCode,
+                rawFlags: event.flags.rawValue,
+                timestamp: timestamp
+            )
         default:
             return Unmanaged.passUnretained(event)
         }
@@ -196,6 +279,14 @@ public final class KeyboardEngine {
             voiceStartedUptime = nil
         }
 
+        if deferredEvents.isActive,
+           !isTriggerKeyCode(keyCode),
+           !isVoiceHotkeyEvent(keyCode),
+           let copiedEvent = event.copy() {
+            deferredEvents.append(copiedEvent)
+            return nil
+        }
+
         return shouldSwallowTriggerEvent() && isTriggerKeyCode(keyCode) ? nil : Unmanaged.passUnretained(event)
     }
 
@@ -220,39 +311,28 @@ public final class KeyboardEngine {
 }
 
 private let keyboardEngineEventTapCallback: CGEventTapCallBack = { _, type, event, refcon in
-    // NOTE: This callback runs on the HID thread. We currently `DispatchQueue.main.sync`
-    // to ensure synchronous access to MainActor-isolated `KeyboardEngine` state and to
-    // return a definitive pass/swallow decision to CGEvent. This blocks the HID thread.
-    // A non-blocking design would require either a listen-only tap plus asynchronous
-    // re-posting (losing precise event ordering) or a full state machine that can make
-    // synchronous swallow decisions from this thread while deferring side effects. That
-    // refactor is larger than the current scope, so the sync hop remains as intentional
-    // technical debt.
     guard let refcon else { return Unmanaged.passUnretained(event) }
     let engine = Unmanaged<KeyboardEngine>.fromOpaque(refcon).takeUnretainedValue()
-    // CGEvent and Unmanaged<CGEvent> are not Sendable, so they cannot be passed directly
-    // across the MainActor boundary. Convert the pointer to a UInt bit-pattern,
-    // forward only that value into the isolated closure, and convert it back on both sides.
     let eventAddress = UInt(bitPattern: Unmanaged.passUnretained(event).toOpaque())
-    var resultAddress: UInt?
-    DispatchQueue.main.sync {
-        resultAddress = MainActor.assumeIsolated {
-            guard let eventPointer = UnsafeMutableRawPointer(bitPattern: eventAddress) else {
-                return eventAddress
-            }
-            let event = Unmanaged<CGEvent>.fromOpaque(eventPointer).takeUnretainedValue()
-            if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-                engine.reenableEventTap()
-                return eventAddress
-            }
-            guard [.flagsChanged, .keyDown, .keyUp].contains(type) else {
-                return eventAddress
-            }
-            guard let returnedEvent = engine.handleKeyboardEvent(event, type: type) else {
-                return nil
-            }
-            return UInt(bitPattern: returnedEvent.toOpaque())
+
+    // start() attaches this CFMachPort source only to the main run loop, so the callback
+    // is already executing on the MainActor's thread. A main.sync hop here would deadlock.
+    let resultAddress: UInt? = MainActor.assumeIsolated {
+        guard let eventPointer = UnsafeMutableRawPointer(bitPattern: eventAddress) else {
+            return eventAddress
         }
+        let event = Unmanaged<CGEvent>.fromOpaque(eventPointer).takeUnretainedValue()
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            engine.reenableEventTap()
+            return eventAddress
+        }
+        guard [.flagsChanged, .keyDown, .keyUp].contains(type) else {
+            return eventAddress
+        }
+        guard let returnedEvent = engine.handleKeyboardEvent(event, type: type) else {
+            return nil
+        }
+        return UInt(bitPattern: returnedEvent.toOpaque())
     }
     return resultAddress.flatMap { address in
         guard let pointer = UnsafeMutableRawPointer(bitPattern: address) else {
@@ -272,7 +352,7 @@ final class HotkeySynthesizer: @unchecked Sendable {
         self.hotkey = hotkey
     }
 
-    func tap(duration: TimeInterval, logger: RimeDouLogger, completion: (@MainActor @Sendable () -> Void)? = nil) {
+    func tap(duration: TimeInterval, logger: RimeDouLogger) {
         var releasedKeys = Set<Key>()
         for key in hotkey.keys where key.isModifier {
             postModifier(key: key, down: true, releasedKeys: releasedKeys)
@@ -291,7 +371,6 @@ final class HotkeySynthesizer: @unchecked Sendable {
                 releasedKeys.insert(key)
             }
             logger.log("voice hotkey tap completed")
-            completion?()
         }
     }
 

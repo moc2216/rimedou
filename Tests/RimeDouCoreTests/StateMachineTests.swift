@@ -14,14 +14,32 @@ final class StateMachineTests: XCTestCase {
         _ = machine.handle(.triggerTap)
         let actions = machine.handle(.triggerTap)
         XCTAssertEqual(actions, [.stopVoice, .restoreInputMethod])
-        XCTAssertEqual(machine.state, .idle)
+        XCTAssertEqual(machine.state, .restoringInputMethod)
     }
 
-    func testExternalVoiceEndRestoresWithoutStopping() {
+    func testExternalVoiceEndStopsVoiceBeforeRestoringBecauseOriginalKeyWillBeDeferred() {
         var machine = VoiceStateMachine()
         _ = machine.handle(.triggerTap)
         let actions = machine.handle(.externalVoiceEnd)
-        XCTAssertEqual(actions, [.restoreInputMethod])
+        XCTAssertEqual(actions, [.stopVoice, .restoreInputMethod])
+        XCTAssertEqual(machine.state, .restoringInputMethod)
+    }
+
+    func testTapWhileRestoringDoesNotStartAnotherSession() {
+        var machine = VoiceStateMachine()
+        _ = machine.handle(.triggerTap)
+        _ = machine.handle(.externalVoiceEnd)
+
+        XCTAssertEqual(machine.handle(.triggerTap), [])
+        XCTAssertEqual(machine.state, .restoringInputMethod)
+    }
+
+    func testRestoreCompletionReturnsToIdle() {
+        var machine = VoiceStateMachine()
+        _ = machine.handle(.triggerTap)
+        _ = machine.handle(.externalVoiceEnd)
+
+        XCTAssertEqual(machine.handle(.restoreCompleted), [])
         XCTAssertEqual(machine.state, .idle)
     }
 
