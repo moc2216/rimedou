@@ -9,8 +9,8 @@ public enum VoiceState: Equatable, Sendable {
 public enum VoiceEvent: Equatable, Sendable {
     case triggerTap
     case externalVoiceEnd
+    case forcedStop
     case restoreCompleted
-    case reset
 }
 
 public enum VoiceAction: Equatable, Sendable {
@@ -34,20 +34,22 @@ public struct VoiceStateMachine: Sendable {
             return [.startVoiceSession]
         case (.idle, .externalVoiceEnd):
             return []
+        case (.idle, .forcedStop):
+            return []
         case (.voiceActive, .triggerTap):
             state = .restoringInputMethod
-            return [.stopVoice, .restoreInputMethod]
+            return [.restoreInputMethod]
         case (.voiceActive, .externalVoiceEnd):
+            state = .restoringInputMethod
+            return [.restoreInputMethod]
+        case (.voiceActive, .forcedStop):
             state = .restoringInputMethod
             return [.stopVoice, .restoreInputMethod]
         case (.restoringInputMethod, .restoreCompleted):
             state = .idle
             return []
         case (_, .restoreCompleted), (.restoringInputMethod, .triggerTap),
-             (.restoringInputMethod, .externalVoiceEnd):
-            return []
-        case (_, .reset):
-            state = .idle
+             (.restoringInputMethod, .externalVoiceEnd), (.restoringInputMethod, .forcedStop):
             return []
         }
     }

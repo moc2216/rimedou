@@ -21,9 +21,6 @@ cp "$ROOT/support/Info.plist" "$CONTENTS/Info.plist"
 if [ -f "$ICON_SOURCE" ]; then
     cp "$ICON_SOURCE" "$RESOURCES/AppIcon.icns"
 fi
-if [ -f "$ROOT/config.json" ]; then
-    cp "$ROOT/config.json" "$RESOURCES/config.json"
-fi
 
 if [ -z "$SIGN_IDENTITY" ]; then
     SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | awk -F '"' '/"[^"]+"/ { print $2; exit }')"

@@ -165,16 +165,22 @@ public final class InputMethodController {
     private func findInputSource(matching value: String) -> TISInputSource? {
         guard let unmanaged = TISCreateInputSourceList(nil, true) else { return nil }
         guard let sources = unmanaged.takeRetainedValue() as? [TISInputSource] else { return nil }
+        // Exact matches (name or identifier) win over substring matches, so a short
+        // target like "Squirrel" cannot resolve to a sibling source first.
+        var fuzzyMatch: TISInputSource?
         for source in sources {
             let name = propertyString(source, kTISPropertyLocalizedName)
             let identifier = propertyString(source, kTISPropertyInputSourceID)
-            if name == value || identifier == value ||
-                name?.localizedCaseInsensitiveContains(value) == true ||
-                identifier?.localizedCaseInsensitiveContains(value) == true {
+            if name == value || identifier == value {
                 return source
             }
+            if fuzzyMatch == nil,
+               name?.localizedCaseInsensitiveContains(value) == true ||
+               identifier?.localizedCaseInsensitiveContains(value) == true {
+                fuzzyMatch = source
+            }
         }
-        return nil
+        return fuzzyMatch
     }
 
     private func waitUntilInputMethodIsActive(

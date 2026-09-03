@@ -2,9 +2,17 @@ import ApplicationServices
 import Foundation
 
 public enum KeyboardEvent: Equatable, Sendable {
-    case keyDown(keyCode: Int64, timestamp: TimeInterval)
-    case keyUp(keyCode: Int64, timestamp: TimeInterval)
+    case keyDown(keyCode: Int64, rawFlags: UInt64, timestamp: TimeInterval)
+    case keyUp(keyCode: Int64, rawFlags: UInt64, timestamp: TimeInterval)
     case flagsChanged(keyCode: Int64, rawFlags: UInt64, timestamp: TimeInterval)
+
+    public static func keyDown(keyCode: Int64, timestamp: TimeInterval) -> KeyboardEvent {
+        .keyDown(keyCode: keyCode, rawFlags: 0, timestamp: timestamp)
+    }
+
+    public static func keyUp(keyCode: Int64, timestamp: TimeInterval) -> KeyboardEvent {
+        .keyUp(keyCode: keyCode, rawFlags: 0, timestamp: timestamp)
+    }
 }
 
 public enum TriggerDetectionResult: Equatable, Sendable {
@@ -57,13 +65,17 @@ public final class TriggerDetector {
     }
 
     public func process(event: KeyboardEvent) -> TriggerDetectionResult {
+        if hasNonModifierActivationKey {
+            return processCombination(event: event)
+        }
+
         switch event {
-        case .keyDown(let keyCode, let timestamp):
+        case .keyDown(let keyCode, _, let timestamp):
             if isTriggerKeyCode(keyCode) {
                 return beginTrigger(keyCode: keyCode, timestamp: timestamp)
             }
             return cancelActiveTrigger()
-        case .keyUp(let keyCode, let timestamp):
+        case .keyUp(let keyCode, _, let timestamp):
             guard isTriggerKeyCode(keyCode) else { return .ignored }
             return finishTrigger(keyCode: keyCode, timestamp: timestamp)
         case .flagsChanged(let keyCode, let rawFlags, let timestamp):
@@ -78,10 +90,30 @@ public final class TriggerDetector {
         }
     }
 
+    private func processCombination(event: KeyboardEvent) -> TriggerDetectionResult {
+        switch event {
+        case .keyDown(let keyCode, let rawFlags, let timestamp):
+            guard isActivationKeyCode(keyCode), modifierFlagsMatch(rawFlags) else {
+                return cancelActiveTrigger()
+            }
+            return beginTrigger(keyCode: keyCode, timestamp: timestamp)
+        case .keyUp(let keyCode, _, let timestamp):
+            guard isActivationKeyCode(keyCode) else { return .ignored }
+            return finishTrigger(keyCode: keyCode, timestamp: timestamp)
+        case .flagsChanged(_, let rawFlags, _):
+            guard activeTriggerKeyCode != nil else { return .ignored }
+            return modifierFlagsMatch(rawFlags) ? .ignored : cancelActiveTrigger()
+        }
+    }
+
     func reset() {
         activeTriggerKeyCode = nil
         triggerDownAt = nil
         otherKeyPressed = false
+    }
+
+    func shouldSwallowEvent(keyCode: Int64, after result: TriggerDetectionResult) -> Bool {
+        result != .ignored && isActivationKeyCode(keyCode)
     }
 
     private func beginTrigger(keyCode: Int64, timestamp: TimeInterval) -> TriggerDetectionResult {
@@ -127,6 +159,56 @@ public final class TriggerDetector {
     private func isTriggerKeyCode(_ keyCode: Int64) -> Bool {
         triggerHotkey.keys.flatMap(\.keyCodes).contains(Int(keyCode))
     }
+
+    private var hasNonModifierActivationKey: Bool {
+        !triggerHotkey.isModifierOnly
+    }
+
+    private func isActivationKeyCode(_ keyCode: Int64) -> Bool {
+        triggerHotkey.keys
+            .filter { !$0.isModifier }
+            .flatMap(\.keyCodes)
+            .contains(Int(keyCode))
+    }
+
+    private func modifierFlagsMatch(_ rawFlags: UInt64) -> Bool {
+        let expected = flags(for: Hotkey(keys: triggerHotkey.keys.filter(\.isModifier)))
+        guard !expected.isEmpty else { return true }
+        let relevant: CGEventFlags = [.maskShift, .maskControl, .maskAlternate, .maskCommand]
+        return CGEventFlags(rawValue: rawFlags).intersection(relevant) == expected
+    }
+}
+
+/// Aggregates one or more trigger hotkeys so any of them can start or end a voice
+/// session, while each keeps its own single-key / combination timing rules.
+struct TriggerDetectorGroup {
+    private let detectors: [TriggerDetector]
+
+    init(hotkeys: [Hotkey], tapMaxDuration: TimeInterval) {
+        precondition(!hotkeys.isEmpty, "at least one trigger hotkey is required")
+        self.detectors = hotkeys.map { TriggerDetector(triggerHotkey: $0, tapMaxDuration: tapMaxDuration) }
+    }
+
+    /// Processes the event through every detector; result order matches hotkey order.
+    /// When any detector fires a tap, all detectors reset so another armed trigger
+    /// cannot fire a second tap on its own release.
+    func process(event: KeyboardEvent) -> [TriggerDetectionResult] {
+        let results = detectors.map { $0.process(event: event) }
+        if results.contains(.triggerTap) {
+            reset()
+        }
+        return results
+    }
+
+    func reset() {
+        detectors.forEach { $0.reset() }
+    }
+
+    func shouldSwallowEvent(keyCode: Int64, after results: [TriggerDetectionResult]) -> Bool {
+        zip(detectors, results).contains { detector, result in
+            detector.shouldSwallowEvent(keyCode: keyCode, after: result)
+        }
+    }
 }
 
 public protocol KeyboardEngineDelegate: AnyObject {
@@ -142,9 +224,15 @@ public protocol KeyboardEngineDelegate: AnyObject {
 ///   state off the main actor is unsafe.
 @MainActor
 public final class KeyboardEngine {
+    public nonisolated static let eventTapLocation: CGEventTapLocation = .cgSessionEventTap
+
+    /// Key events arriving within this window after voice start are ignored for
+    /// external voice end detection, so synthetic key noise does not end the session.
+    private static let externalEndSilenceWindow: TimeInterval = 0.5
+
     private let config: RimeDouConfig
     private let logger: RimeDouLogger
-    private let triggerDetector: TriggerDetector
+    private let triggerDetectorGroup: TriggerDetectorGroup
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var voiceStartedUptime: TimeInterval?
@@ -154,8 +242,12 @@ public final class KeyboardEngine {
     public init(config: RimeDouConfig, logger: RimeDouLogger) {
         self.config = config
         self.logger = logger
-        self.triggerDetector = TriggerDetector(
-            triggerHotkey: config.triggerHotkey,
+        var triggerHotkeys = [config.triggerHotkey]
+        if let secondary = config.triggerHotkey2 {
+            triggerHotkeys.append(secondary)
+        }
+        self.triggerDetectorGroup = TriggerDetectorGroup(
+            hotkeys: triggerHotkeys,
             tapMaxDuration: config.tapMaxDuration
         )
     }
@@ -170,7 +262,7 @@ public final class KeyboardEngine {
             | (1 << CGEventType.keyUp.rawValue)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(
-            tap: .cghidEventTap,
+            tap: Self.eventTapLocation,
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: CGEventMask(mask),
@@ -181,7 +273,12 @@ public final class KeyboardEngine {
             return false
         }
         eventTap = tap
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
+            CFMachPortInvalidate(tap)
+            eventTap = nil
+            logger.log("failed to create run loop source for event tap")
+            return false
+        }
         runLoopSource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
@@ -190,9 +287,9 @@ public final class KeyboardEngine {
     }
 
     public func stop() {
-        triggerDetector.reset()
+        triggerDetectorGroup.reset()
         voiceStartedUptime = nil
-        completeInputDeferral(replay: true)
+        completeInputDeferral()
         guard eventTap != nil || runLoopSource != nil else { return }
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
@@ -226,11 +323,10 @@ public final class KeyboardEngine {
         }
     }
 
-    public func completeInputDeferral(replay: Bool) {
+    public func completeInputDeferral() {
         let events = deferredEvents.drain()
         guard !events.isEmpty else { return }
-        logger.log("input deferral completed: replay=\(replay) events=\(events.count)")
-        guard replay else { return }
+        logger.log("input deferral completed: events=\(events.count)")
         for event in events {
             event.post(tap: .cghidEventTap)
         }
@@ -243,9 +339,17 @@ public final class KeyboardEngine {
         let keyboardEvent: KeyboardEvent
         switch type {
         case .keyDown:
-            keyboardEvent = .keyDown(keyCode: keyCode, timestamp: timestamp)
+            keyboardEvent = .keyDown(
+                keyCode: keyCode,
+                rawFlags: event.flags.rawValue,
+                timestamp: timestamp
+            )
         case .keyUp:
-            keyboardEvent = .keyUp(keyCode: keyCode, timestamp: timestamp)
+            keyboardEvent = .keyUp(
+                keyCode: keyCode,
+                rawFlags: event.flags.rawValue,
+                timestamp: timestamp
+            )
         case .flagsChanged:
             keyboardEvent = .flagsChanged(
                 keyCode: keyCode,
@@ -256,21 +360,23 @@ public final class KeyboardEngine {
             return Unmanaged.passUnretained(event)
         }
 
-        let result = triggerDetector.process(event: keyboardEvent)
-        switch result {
-        case .triggerTap:
-            logger.log("trigger tap detected")
-            delegate?.keyboardEngineDidDetectTriggerTap(self)
-        case .cancelled(let reason):
-            logger.log("trigger cancelled: \(reason)")
-        case .triggerDown, .ignored:
-            break
+        let results = triggerDetectorGroup.process(event: keyboardEvent)
+        for result in results {
+            switch result {
+            case .triggerTap:
+                logger.log("trigger tap detected")
+                delegate?.keyboardEngineDidDetectTriggerTap(self)
+            case .cancelled(let reason):
+                logger.log("trigger cancelled: \(reason)")
+            case .triggerDown, .ignored:
+                break
+            }
         }
 
         // Detect external voice end: any non-trigger key event while voice is active,
-        // after a 0.5s silence window to ignore synthetic key noise.
+        // after a silence window to ignore synthetic key noise.
         if let startedUptime = voiceStartedUptime,
-           ProcessInfo.processInfo.systemUptime - startedUptime > 0.5,
+           ProcessInfo.processInfo.systemUptime - startedUptime > Self.externalEndSilenceWindow,
            !isVoiceHotkeyEvent(keyCode),
            !isTriggerKeyCode(keyCode),
            (type == .keyDown || type == .flagsChanged) {
@@ -287,20 +393,21 @@ public final class KeyboardEngine {
             return nil
         }
 
-        return shouldSwallowTriggerEvent() && isTriggerKeyCode(keyCode) ? nil : Unmanaged.passUnretained(event)
+        return triggerDetectorGroup.shouldSwallowEvent(keyCode: keyCode, after: results)
+            ? nil
+            : Unmanaged.passUnretained(event)
     }
 
     private func isTriggerKeyCode(_ keyCode: Int64) -> Bool {
-        config.triggerHotkey.keys.flatMap(\.keyCodes).contains(Int(keyCode))
+        var keyCodes = config.triggerHotkey.keys.flatMap(\.keyCodes)
+        if let secondary = config.triggerHotkey2 {
+            keyCodes += secondary.keys.flatMap(\.keyCodes)
+        }
+        return keyCodes.contains(Int(keyCode))
     }
 
     private func isVoiceHotkeyEvent(_ keyCode: Int64) -> Bool {
         config.voiceHotkey.keys.flatMap(\.keyCodes).contains(Int(keyCode))
-    }
-
-    private func shouldSwallowTriggerEvent() -> Bool {
-        // Swallow non-modifier trigger keys so they don't leak into the active app.
-        !config.triggerHotkey.keys.allSatisfy(\.isModifier)
     }
 
     fileprivate func reenableEventTap() {

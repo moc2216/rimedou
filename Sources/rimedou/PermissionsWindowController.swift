@@ -7,7 +7,7 @@ protocol PermissionsWindowControllerDelegate: AnyObject {
 }
 
 @MainActor
-final class PermissionsWindowController: NSWindowController {
+final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
     weak var delegate: PermissionsWindowControllerDelegate?
 
     private let reportProvider: () -> PermissionReport
@@ -41,6 +41,7 @@ final class PermissionsWindowController: NSWindowController {
         window.title = "Enable rimedou"
         window.contentView = buildContentView()
         self.window = window
+        window.delegate = self
     }
 
     private func buildContentView() -> NSView {
@@ -146,11 +147,13 @@ final class PermissionsWindowController: NSWindowController {
         updateStatus()
     }
 
-    override func close() {
+    /// Runs for every close path, including the window's close button, so the timer
+    /// always stops and the owner always learns the window is gone. Keep `onClose()`
+    /// as the last statement: it may drop the last reference to self.
+    func windowWillClose(_ notification: Notification) {
         timer?.invalidate()
         timer = nil
         onClose()
-        super.close()
     }
 
     private func startPolling() {
@@ -187,8 +190,12 @@ final class PermissionsWindowController: NSWindowController {
     @objc private func enableTapped() {
         let report = reportProvider()
         guard report.isReady else { return }
-        close()
-        delegate?.permissionsWindowControllerDidBecomeReady(self)
+        // close() triggers windowWillClose, whose onClose may drop the last reference
+        // to this controller; keep self alive until the delegate callback finishes.
+        withExtendedLifetime(self) {
+            close()
+            delegate?.permissionsWindowControllerDidBecomeReady(self)
+        }
     }
 }
 

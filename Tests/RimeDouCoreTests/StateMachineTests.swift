@@ -9,19 +9,27 @@ final class StateMachineTests: XCTestCase {
         XCTAssertEqual(machine.state, .voiceActive)
     }
 
-    func testTapWhileActiveStopsVoiceAndRestores() {
+    func testTapWhileActiveRestoresWithoutResendingVoiceHotkey() {
         var machine = VoiceStateMachine()
         _ = machine.handle(.triggerTap)
         let actions = machine.handle(.triggerTap)
-        XCTAssertEqual(actions, [.stopVoice, .restoreInputMethod])
+        XCTAssertEqual(actions, [.restoreInputMethod])
         XCTAssertEqual(machine.state, .restoringInputMethod)
     }
 
-    func testExternalVoiceEndStopsVoiceBeforeRestoringBecauseOriginalKeyWillBeDeferred() {
+    func testExternalVoiceEndRestoresWithoutResendingVoiceHotkey() {
         var machine = VoiceStateMachine()
         _ = machine.handle(.triggerTap)
         let actions = machine.handle(.externalVoiceEnd)
-        XCTAssertEqual(actions, [.stopVoice, .restoreInputMethod])
+        XCTAssertEqual(actions, [.restoreInputMethod])
+        XCTAssertEqual(machine.state, .restoringInputMethod)
+    }
+
+    func testForcedStopStillSendsVoiceHotkeyBeforeRestoring() {
+        var machine = VoiceStateMachine()
+        _ = machine.handle(.triggerTap)
+
+        XCTAssertEqual(machine.handle(.forcedStop), [.stopVoice, .restoreInputMethod])
         XCTAssertEqual(machine.state, .restoringInputMethod)
     }
 
@@ -43,10 +51,13 @@ final class StateMachineTests: XCTestCase {
         XCTAssertEqual(machine.state, .idle)
     }
 
-    func testResetReturnsToIdle() {
+    func testPunctuationAfterRestoreCannotSendAnotherVoiceHotkey() {
         var machine = VoiceStateMachine()
         _ = machine.handle(.triggerTap)
-        _ = machine.handle(.reset)
+        _ = machine.handle(.externalVoiceEnd)
+        _ = machine.handle(.restoreCompleted)
+
+        XCTAssertEqual(machine.handle(.externalVoiceEnd), [])
         XCTAssertEqual(machine.state, .idle)
     }
 }

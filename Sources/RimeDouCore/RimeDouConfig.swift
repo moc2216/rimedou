@@ -1,6 +1,6 @@
 import Foundation
 
-public enum Key: Equatable, Hashable, Sendable, Encodable {
+public enum Key: Equatable, Hashable, Sendable {
     case leftShift, rightShift, shift
     case leftControl, rightControl, control
     case leftOption, rightOption, option
@@ -39,18 +39,19 @@ public enum Key: Equatable, Hashable, Sendable, Encodable {
         case .character(let c): return c
         }
     }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(stringRepresentation)
-    }
 }
 
-public struct Hotkey: Equatable, Sendable, Encodable {
+public struct Hotkey: Equatable, Sendable {
     public var keys: [Key]
 
     public init(keys: [Key]) {
         self.keys = keys
+    }
+
+    /// True when the hotkey consists only of modifier keys: it is armed by
+    /// `flagsChanged` events instead of the keyDown of a normal key.
+    public var isModifierOnly: Bool {
+        keys.allSatisfy(\.isModifier)
     }
 
     public var stringRepresentation: String {
@@ -117,9 +118,13 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
     public var tapMaxDuration: TimeInterval
     public var tapDuration: TimeInterval
     public var triggerHotkey: Hotkey
+    /// Optional second trigger hotkey (e.g. a keyboard combo a mouse tool synthesizes
+    /// for a side button). `nil` disables it; it is declarative and device-independent,
+    /// so a missing source device just leaves it dormant — never an error.
+    public var triggerHotkey2: Hotkey?
     public var voiceHotkey: Hotkey
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case restoreDelay
         case switchPollInterval
         case switchWaitTimeout
@@ -128,6 +133,7 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
         case tapMaxDuration
         case tapDuration
         case triggerHotkey
+        case triggerHotkey2
         case voiceHotkey
     }
 
@@ -141,6 +147,7 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
         try container.encode(tapMaxDuration, forKey: .tapMaxDuration)
         try container.encode(tapDuration, forKey: .tapDuration)
         try container.encode(triggerHotkey.stringRepresentation, forKey: .triggerHotkey)
+        try container.encodeIfPresent(triggerHotkey2?.stringRepresentation, forKey: .triggerHotkey2)
         try container.encode(voiceHotkey.stringRepresentation, forKey: .voiceHotkey)
     }
 
@@ -156,26 +163,122 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
         voiceHotkey: Hotkey(keys: [.rightControl])
     )
 
-    public static func load(from data: Data) throws -> RimeDouConfig {
+    /// Loads a config, layering parsed values over the defaults.
+    /// Invalid values fall back to the default and are reported through `onWarning`
+    /// instead of failing silently, so a typo in the JSON shows up in the log.
+    public static func load(
+        from data: Data,
+        onWarning: ((String) -> Void)? = nil
+    ) throws -> RimeDouConfig {
         let decoder = JSONDecoder()
         let partial = try decoder.decode(PartialRimeDouConfig.self, from: data)
+        if let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+            let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+            for key in object.keys.sorted() where !knownKeys.contains(key) {
+                onWarning?("unknown config key \"\(key)\" ignored")
+            }
+        }
         var config = RimeDouConfig.default
-        if let value = partial.restoreDelay, validDelay(value) { config.restoreDelay = value }
-        if let value = partial.switchPollInterval, validDuration(value) { config.switchPollInterval = value }
-        if let value = partial.switchWaitTimeout, validDuration(value) { config.switchWaitTimeout = value }
-        if let value = partial.focusBounceBackDelay, validDelay(value) { config.focusBounceBackDelay = value }
-        if let value = partial.focusBounceSettleDelay, validDelay(value) { config.focusBounceSettleDelay = value }
-        if let value = partial.tapMaxDuration, validDuration(value) { config.tapMaxDuration = value }
-        if let value = partial.tapDuration, validDuration(value) { config.tapDuration = value }
-        if let value = partial.triggerHotkey,
-           let hotkey = Hotkey.parse(value),
-           hotkey.keys.count == 1 {
-            config.triggerHotkey = hotkey
+        applyTiming(&config.restoreDelay, partial.restoreDelay, name: "restoreDelay", isValid: validDelay, onWarning: onWarning)
+        applyTiming(&config.switchPollInterval, partial.switchPollInterval, name: "switchPollInterval", isValid: validDuration, onWarning: onWarning)
+        applyTiming(&config.switchWaitTimeout, partial.switchWaitTimeout, name: "switchWaitTimeout", isValid: validDuration, onWarning: onWarning)
+        applyTiming(&config.focusBounceBackDelay, partial.focusBounceBackDelay, name: "focusBounceBackDelay", isValid: validDelay, onWarning: onWarning)
+        applyTiming(&config.focusBounceSettleDelay, partial.focusBounceSettleDelay, name: "focusBounceSettleDelay", isValid: validDelay, onWarning: onWarning)
+        applyTiming(&config.tapMaxDuration, partial.tapMaxDuration, name: "tapMaxDuration", isValid: validDuration, onWarning: onWarning)
+        applyTiming(&config.tapDuration, partial.tapDuration, name: "tapDuration", isValid: validDuration, onWarning: onWarning)
+        if let value = partial.triggerHotkey {
+            if let hotkey = Hotkey.parse(value) {
+                if validTriggerHotkey(hotkey) {
+                    config.triggerHotkey = hotkey
+                } else {
+                    onWarning?("invalid triggerHotkey \"\(value)\": use a single key, or modifiers plus exactly one normal key; keeping default \"\(RimeDouConfig.default.triggerHotkey.stringRepresentation)\"")
+                }
+            } else {
+                onWarning?("unparseable triggerHotkey \"\(value)\"; keeping default \"\(RimeDouConfig.default.triggerHotkey.stringRepresentation)\"")
+            }
         }
         if let value = partial.voiceHotkey {
-            config.voiceHotkey = Hotkey.parse(value) ?? config.voiceHotkey
+            if let hotkey = Hotkey.parse(value) {
+                config.voiceHotkey = hotkey
+            } else {
+                onWarning?("unparseable voiceHotkey \"\(value)\"; keeping default \"\(RimeDouConfig.default.voiceHotkey.stringRepresentation)\"")
+            }
+        }
+        // Reject a trigger the voice hotkey's own synthesized events could re-arm.
+        if let warning = selfTriggerWarning(for: config.triggerHotkey, voice: config.voiceHotkey) {
+            onWarning?("\(warning); resetting both to defaults")
+            config.triggerHotkey = RimeDouConfig.default.triggerHotkey
+            config.voiceHotkey = RimeDouConfig.default.voiceHotkey
+        }
+        // The optional second trigger never affects the primary trigger or the voice
+        // hotkey: any problem with it only drops the second trigger itself.
+        if let value = partial.triggerHotkey2 {
+            config.triggerHotkey2 = resolveSecondaryTrigger(
+                value,
+                primary: config.triggerHotkey,
+                voice: config.voiceHotkey,
+                onWarning: onWarning
+            )
         }
         return config
+    }
+
+    /// Returns a warning when the voice hotkey's own synthesized events could re-arm
+    /// the given trigger: a modifier-only trigger arms on flagsChanged (any shared key
+    /// loops), while a combination trigger arms on its normal key's keyDown (only a
+    /// shared normal key on the voice hotkey can synthesize that).
+    private static func selfTriggerWarning(for trigger: Hotkey, voice: Hotkey) -> String? {
+        let triggerArmingKeyCodes: Set<Int>
+        let voiceSynthesizedKeyCodes: Set<Int>
+        if trigger.isModifierOnly {
+            triggerArmingKeyCodes = Set(trigger.keys.flatMap(\.keyCodes))
+            voiceSynthesizedKeyCodes = Set(voice.keys.flatMap(\.keyCodes))
+        } else {
+            triggerArmingKeyCodes = Set(trigger.keys.filter { !$0.isModifier }.flatMap(\.keyCodes))
+            voiceSynthesizedKeyCodes = Set(voice.keys.filter { !$0.isModifier }.flatMap(\.keyCodes))
+        }
+        guard !triggerArmingKeyCodes.isDisjoint(with: voiceSynthesizedKeyCodes) else { return nil }
+        return "triggerHotkey \"\(trigger.stringRepresentation)\" can be re-armed by the synthesized voiceHotkey \"\(voice.stringRepresentation)\""
+    }
+
+    private static func resolveSecondaryTrigger(
+        _ value: String,
+        primary: Hotkey,
+        voice: Hotkey,
+        onWarning: ((String) -> Void)?
+    ) -> Hotkey? {
+        guard let hotkey = Hotkey.parse(value) else {
+            onWarning?("unparseable triggerHotkey2 \"\(value)\"; ignoring it")
+            return nil
+        }
+        guard validTriggerHotkey(hotkey) else {
+            onWarning?("invalid triggerHotkey2 \"\(value)\": use a single key, or modifiers plus exactly one normal key; ignoring it")
+            return nil
+        }
+        guard hotkey != primary else {
+            onWarning?("triggerHotkey2 \"\(value)\" is identical to triggerHotkey; ignoring it")
+            return nil
+        }
+        if let warning = selfTriggerWarning(for: hotkey, voice: voice) {
+            onWarning?("\(warning) on triggerHotkey2; ignoring triggerHotkey2")
+            return nil
+        }
+        return hotkey
+    }
+
+    private static func applyTiming(
+        _ target: inout TimeInterval,
+        _ value: TimeInterval?,
+        name: String,
+        isValid: (TimeInterval) -> Bool,
+        onWarning: ((String) -> Void)?
+    ) {
+        guard let value else { return }
+        if isValid(value) {
+            target = value
+        } else {
+            onWarning?("invalid \(name) \(value); keeping default \(target)")
+        }
     }
 
     private static func validDelay(_ value: TimeInterval) -> Bool {
@@ -184,6 +287,16 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
 
     private static func validDuration(_ value: TimeInterval) -> Bool {
         value.isFinite && (0.001...60).contains(value)
+    }
+
+    private static func validTriggerHotkey(_ hotkey: Hotkey) -> Bool {
+        guard !hotkey.keys.isEmpty, Set(hotkey.keys).count == hotkey.keys.count else {
+            return false
+        }
+        if hotkey.keys.count == 1 {
+            return true
+        }
+        return hotkey.keys.filter { !$0.isModifier }.count == 1
     }
 
     public static var defaultUserConfigURL: URL {
@@ -199,7 +312,9 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
             .appendingPathComponent("config.json")
     }
 
-    public static func loadFromDefaultLocation() -> RimeDouConfig {
+    public static func loadFromDefaultLocation(
+        onWarning: ((String) -> Void)? = nil
+    ) -> RimeDouConfig {
         let url = defaultUserConfigURL
         if !FileManager.default.fileExists(atPath: url.path) {
             try? FileManager.default.createDirectory(
@@ -215,7 +330,12 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
         guard let data = try? Data(contentsOf: url) else {
             return .default
         }
-        return (try? load(from: data)) ?? .default
+        do {
+            return try load(from: data, onWarning: onWarning)
+        } catch {
+            onWarning?("failed to parse config: \(error.localizedDescription); using defaults")
+            return .default
+        }
     }
 }
 
@@ -228,5 +348,6 @@ private struct PartialRimeDouConfig: Decodable {
     var tapMaxDuration: TimeInterval?
     var tapDuration: TimeInterval?
     var triggerHotkey: String?
+    var triggerHotkey2: String?
     var voiceHotkey: String?
 }

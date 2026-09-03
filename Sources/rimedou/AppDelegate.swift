@@ -3,8 +3,8 @@ import RimeDouCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var config = RimeDouConfig.loadFromDefaultLocation()
-    private let logger = RimeDouLogger()
+    private let logger: RimeDouLogger
+    private var config: RimeDouConfig
     // These are `var` / `lazy var` because `logger` must be created first and then passed into the other objects.
     private var stateMachine = VoiceStateMachine()
     private var keyboardEngine: KeyboardEngine
@@ -13,12 +13,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var permissionWindow: PermissionsWindowController?
     private var currentSessionID = UUID()
     private var originalInputMethod: String?
+    /// Last input method seen that was not Doubao, used as the restore target when a
+    /// voice session starts while Doubao is already active (its predecessor is unknown).
+    private var lastKnownNonDoubaoInputMethod: String?
     private var originalApp: NSRunningApplication?
     private var originalWindow: AXUIElement?
     private var enabled = true
     private var startupWarmupStarted = false
 
     override init() {
+        let logger = RimeDouLogger()
+        self.logger = logger
+        let config = RimeDouConfig.loadFromDefaultLocation(onWarning: { logger.log($0) })
+        self.config = config
         self.keyboardEngine = KeyboardEngine(config: config, logger: logger)
         super.init()
     }
@@ -31,6 +38,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // Stop an in-flight voice session so Doubao's microphone does not stay open
+        // after we exit; the forced-stop path sends the voice hotkey explicitly.
+        finishActiveVoiceSessionIfNeeded()
         keyboardEngine.stop()
         if let target = originalInputMethod {
             _ = inputMethodController.selectInputMethod(namedOrIdentifiedBy: target)
@@ -88,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func reloadConfig() {
         finishActiveVoiceSessionIfNeeded()
         keyboardEngine.stop()
-        config = RimeDouConfig.loadFromDefaultLocation()
+        config = RimeDouConfig.loadFromDefaultLocation(onWarning: { [logger] in logger.log($0) })
         keyboardEngine = KeyboardEngine(config: config, logger: logger)
         if enabled {
             startKeyboardEngine()
@@ -121,13 +131,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func inputMonitoringPermissionIsGranted() -> Bool {
-        guard #available(macOS 10.15, *) else { return true }
         guard CGPreflightListenEventAccess() else { return false }
         let mask = (1 << CGEventType.flagsChanged.rawValue)
             | (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
+        // Probe the same tap layer the engine actually uses, so the check reflects
+        // what starting the engine will really require.
         guard let tap = CGEvent.tapCreate(
-            tap: .cghidEventTap,
+            tap: KeyboardEngine.eventTapLocation,
             place: .headInsertEventTap,
             options: .listenOnly,
             eventsOfInterest: CGEventMask(mask),
@@ -168,7 +179,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             logger.log("failed to start keyboard engine")
             return
         }
-        logger.log("keyboard engine started")
     }
 
     private func warmUpInputMethodAndStartKeyboardEngine() {
@@ -179,6 +189,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.statusItem?.button?.title = self.enabled ? "豆" : "豆-"
             self.logger.log("startup warmup finished: success=\(succeeded)")
+            let current = self.inputMethodController.currentInputMethod()
+            if !InputMethodController.isDoubaoInputMethod(current) {
+                self.lastKnownNonDoubaoInputMethod = current
+            }
             if self.enabled {
                 self.startKeyboardEngine()
             }
@@ -187,7 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func finishActiveVoiceSessionIfNeeded() {
         guard stateMachine.state == .voiceActive else { return }
-        for action in stateMachine.handle(.triggerTap) {
+        for action in stateMachine.handle(.forcedStop) {
             apply(action)
         }
     }
@@ -226,6 +240,8 @@ extension AppDelegate: KeyboardEngineDelegate {
             keyboardEngine.resetVoiceStartTime()
             keyboardEngine.sendVoiceHotkey()
         case .restoreInputMethod:
+            // The voice session is over; stop treating later key events as its end signal.
+            keyboardEngine.resetVoiceStartTime()
             restoreInputMethod()
         }
     }
@@ -235,10 +251,12 @@ extension AppDelegate: KeyboardEngineDelegate {
         keyboardEngine.markVoiceStarted()
         let current = inputMethodController.currentInputMethod()
         if InputMethodController.isDoubaoInputMethod(current) {
-            originalInputMethod = "Squirrel"
-            logger.log("current is doubao; restore target -> Squirrel")
+            let fallback = lastKnownNonDoubaoInputMethod ?? "Squirrel"
+            originalInputMethod = fallback
+            logger.log("current is doubao; restore target -> \(fallback)")
         } else {
             originalInputMethod = current
+            lastKnownNonDoubaoInputMethod = current
             logger.log("record original input method: \(current)")
         }
         originalApp = NSWorkspace.shared.frontmostApplication
@@ -250,7 +268,7 @@ extension AppDelegate: KeyboardEngineDelegate {
         keyboardEngine.beginInputDeferral()
         guard let target = originalInputMethod else {
             stateMachine.handle(.restoreCompleted)
-            keyboardEngine.completeInputDeferral(replay: true)
+            keyboardEngine.completeInputDeferral()
             return
         }
         let session = currentSessionID
@@ -265,7 +283,7 @@ extension AppDelegate: KeyboardEngineDelegate {
             self.originalApp = nil
             self.originalWindow = nil
             self.stateMachine.handle(.restoreCompleted)
-            self.keyboardEngine.completeInputDeferral(replay: true)
+            self.keyboardEngine.completeInputDeferral()
         }
     }
 }

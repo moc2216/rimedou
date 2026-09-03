@@ -1,6 +1,6 @@
 import Foundation
 
-public enum PermissionKind: CaseIterable, Equatable, Sendable {
+public enum PermissionKind: Equatable, Sendable {
     case accessibility
     case inputMonitoring
 
