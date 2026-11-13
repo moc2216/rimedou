@@ -12,7 +12,8 @@
 | 自动测试 | 2026-11-13执行172项，0失败 |
 | Release构建与签名 | 通过，当前安装版与打包版全部文件一致 |
 | Contributors历史清理 | 2026-11-13历史及接口核对通过，首页仍显示3人，等待服务端刷新 |
-| v3代码推送、远端CI与Release | 待执行 |
+| v3源码与发布入口 | [源码分支](https://github.com/moc2216/rimedou/tree/release/v3.0.0)、[v3.0.0下载](https://github.com/moc2216/rimedou/releases/tag/v3.0.0) |
+| GitHub自动检查 | [macOS检查记录](https://github.com/moc2216/rimedou/actions/workflows/ci.yml)，包括测试、release构建及应用输入检查 |
 
 323实际验收段记录了2次取消意图、输入法自动恢复和后续千问会话，保护事件为0。测试日志及真实反馈覆盖各自的使用范围。
 
