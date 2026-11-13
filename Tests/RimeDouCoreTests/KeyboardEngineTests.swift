@@ -3,6 +3,43 @@ import XCTest
 @testable import RimeDouCore
 
 final class KeyboardEngineTests: XCTestCase {
+    @MainActor func testReplayRoutesToCapturedDestinationProcess() {
+        var genericKeyCodes: [Int64] = []
+        var pidTargetedKeyCodes: [Int64] = []
+        var deliveredPID: pid_t = 0
+        let engine = KeyboardEngine(
+            config: .default,
+            logger: RimeDouLogger(url: URL(fileURLWithPath: "/dev/null")),
+            postEvent: { genericKeyCodes.append($0.getIntegerValueField(.keyboardEventKeycode)) },
+            postEventToPID: { event, pid in
+                pidTargetedKeyCodes.append(event.getIntegerValueField(.keyboardEventKeycode))
+                deliveredPID = pid
+            })
+        func key(_ code: CGKeyCode, _ down: Bool) -> CGEvent {
+            let e = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)!
+            e.flags = []
+            return e
+        }
+        // Session-wide event filters on the user's machine swallow synthetic printable
+        // keyDowns posted at the HID tap (2026-09-12 probe), so replay of buffered
+        // input must go straight to the original destination process.
+        engine.replayTargetPID = 4242
+        engine.beginInputDeferral()
+        _ = engine.handleKeyboardEvent(key(18, true), type: .keyDown)
+        _ = engine.handleKeyboardEvent(key(18, false), type: .keyUp)
+        XCTAssertTrue(engine.completeInputDeferral())
+        XCTAssertEqual(pidTargetedKeyCodes, [18, 18])
+        XCTAssertEqual(deliveredPID, 4242)
+        XCTAssertTrue(genericKeyCodes.isEmpty, "replay with a known destination must not post to the global tap")
+
+        engine.beginInputDeferral()
+        _ = engine.handleKeyboardEvent(key(19, true), type: .keyDown)
+        _ = engine.handleKeyboardEvent(key(19, false), type: .keyUp)
+        engine.replayTargetPID = nil
+        XCTAssertTrue(engine.completeInputDeferral())
+        XCTAssertEqual(genericKeyCodes.count, 2, "without a captured destination, replay keeps the generic tap path")
+    }
+
     func testKeyboardEngineCapturesSyntheticShortcutsAtSessionEntry() {
         XCTAssertEqual(KeyboardEngine.eventTapLocation, .cgSessionEventTap)
     }
@@ -319,7 +356,7 @@ final class KeyboardEngineTests: XCTestCase {
         // The still-armed combo trigger must not fire a second tap after the group reset.
         let lateComboUp = group.process(event: .keyUp(keyCode: 6, rawFlags: comboFlags, timestamp: 0.15))
         XCTAssertFalse(lateComboUp.contains(.triggerTap))
-        XCTAssertFalse(group.shouldSwallowEvent(keyCode: 6, after: lateComboUp))
+        XCTAssertTrue(group.shouldSwallowEvent(keyCode: 6, after: lateComboUp))
     }
 
     func testGroupSwallowUnionsActivationKeysAndPassesModifiers() {

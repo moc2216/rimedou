@@ -10,6 +10,9 @@ public final class RimeDouLogger: @unchecked Sendable {
         self.url = url
         self.maxFileSize = max(1, maxFileSize)
         self.formatter = ISO8601DateFormatter()
+        // Second-level timestamps repeatedly hid sub-second start/restore timings
+        // during live debugging (2026-09-12); keep millisecond precision.
+        self.formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true

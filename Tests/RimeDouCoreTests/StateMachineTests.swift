@@ -2,6 +2,24 @@ import XCTest
 @testable import RimeDouCore
 
 final class StateMachineTests: XCTestCase {
+    func testExplicitRecoveryCanRestartBlockedOrInterruptedRestore() {
+        for state in [VoiceState.blocked, .restoringInputMethod] {
+            var machine = VoiceStateMachine(state: state)
+            XCTAssertEqual(machine.handle(.recoveryRequested), [.restoreInputMethod])
+            XCTAssertEqual(machine.state, .restoringInputMethod)
+            _ = machine.handle(.restoreCompleted)
+            XCTAssertEqual(machine.state, .idle)
+        }
+    }
+
+    func testExplicitRecoveryDoesNotInterruptActiveOrCompletingVoice() {
+        for state in [VoiceState.idle, .voiceActive, .waitingForProviderCompletion] {
+            var machine = VoiceStateMachine(state: state)
+            XCTAssertEqual(machine.handle(.recoveryRequested), [])
+            XCTAssertEqual(machine.state, state)
+        }
+    }
+
     func testTapFromIdleStartsVoice() {
         var machine = VoiceStateMachine()
         let actions = machine.handle(.triggerTap)

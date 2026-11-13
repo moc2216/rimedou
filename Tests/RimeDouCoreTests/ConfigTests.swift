@@ -2,6 +2,109 @@ import XCTest
 @testable import RimeDouCore
 
 final class ConfigTests: XCTestCase {
+    func testQianwenOnlyMayUseUninstalledDoubaoDefaultHotkey() throws {
+        var warnings: [String] = []
+        let config = try RimeDouConfig.load(from: Data(#"{"qianwen_VoiceHotkey":"RightControl"}"#.utf8), installedProviders: [.qianwen], onWarning: { warnings.append($0) })
+        XCTAssertEqual(config.qianwenVoiceHotkey, Hotkey(keys: [.rightControl]))
+        XCTAssertTrue(warnings.isEmpty)
+    }
+
+    func testUninstalledDoubaoDoesNotResetPrimaryOrDropMouseTrigger() throws {
+        for providers: Set<VoiceProviderID> in [[], [.qianwen]] {
+            var warnings: [String] = []
+            let primary = try RimeDouConfig.load(from: Data(#"{"triggerHotkey":"RightControl","qianwen_VoiceHotkey":"LeftOption"}"#.utf8), installedProviders: providers, onWarning: { warnings.append($0) })
+            XCTAssertEqual(primary.triggerHotkey, Hotkey(keys: [.rightControl]))
+            let secondary = try RimeDouConfig.load(from: Data(#"{"triggerHotkey2":"RightControl","qianwen_VoiceHotkey":"LeftOption"}"#.utf8), installedProviders: providers, onWarning: { warnings.append($0) })
+            XCTAssertEqual(secondary.triggerHotkey2, Hotkey(keys: [.rightControl]))
+            XCTAssertTrue(warnings.isEmpty)
+        }
+    }
+
+    func testUninstalledQianwenConflictsDoNotAffectDoubaoConfiguration() throws {
+        var warnings: [String] = []
+        let config = try RimeDouConfig.load(from: Data(#"{"triggerHotkey2":"LeftShift+LeftOption+Z","qianwen_VoiceHotkey":"RightCommand"}"#.utf8), installedProviders: [.doubao], onWarning: { warnings.append($0) })
+        XCTAssertEqual(config.triggerHotkey, RimeDouConfig.default.triggerHotkey)
+        XCTAssertEqual(config.triggerHotkey2, Hotkey.parse("LeftShift+LeftOption+Z"))
+        XCTAssertEqual(config.voiceHotkey, RimeDouConfig.default.voiceHotkey)
+        XCTAssertEqual(config.qianwenVoiceHotkey, Hotkey(keys: [.rightCommand]))
+        XCTAssertTrue(warnings.isEmpty)
+    }
+
+    func testBothInstalledRetainVendorConflictProtection() throws {
+        var warnings: [String] = []
+        let config = try RimeDouConfig.load(from: Data(#"{"qianwen_VoiceHotkey":"RightControl"}"#.utf8), installedProviders: [.doubao, .qianwen], onWarning: { warnings.append($0) })
+        XCTAssertNil(config.qianwenVoiceHotkey)
+        XCTAssertEqual(config.voiceHotkey, RimeDouConfig.default.voiceHotkey)
+        XCTAssertEqual(warnings.count, 1)
+    }
+
+    func testQianwenOnlyStillRejectsActiveTransportRearmingTrigger() throws {
+        var warnings: [String] = []
+        let config = try RimeDouConfig.load(from: Data(#"{"triggerHotkey":"RightControl","qianwen_VoiceHotkey":"RightControl"}"#.utf8), installedProviders: [.qianwen], onWarning: { warnings.append($0) })
+        XCTAssertEqual(config.triggerHotkey, Hotkey(keys: [.rightControl]))
+        XCTAssertNil(config.qianwenVoiceHotkey)
+        XCTAssertEqual(warnings.count, 1)
+    }
+
+    func testReloadingOriginalConfigurationRevalidatesChangedInstalledProviders() throws {
+        let data = Data(#"{"qianwen_VoiceHotkey":"RightControl"}"#.utf8)
+        XCTAssertEqual(try RimeDouConfig.load(from: data, installedProviders: [.qianwen]).qianwenVoiceHotkey, Hotkey(keys: [.rightControl]))
+        XCTAssertNil(try RimeDouConfig.load(from: data, installedProviders: [.doubao, .qianwen]).qianwenVoiceHotkey)
+        XCTAssertEqual(try RimeDouConfig.load(from: data, installedProviders: [.qianwen]).qianwenVoiceHotkey, Hotkey(keys: [.rightControl]))
+    }
+
+    func testQianwenOnlyStillRejectsTransportThatRearmsMouseTrigger() throws {
+        let config = try RimeDouConfig.load(from: Data(#"{"triggerHotkey2":"RightControl","qianwen_VoiceHotkey":"RightControl"}"#.utf8), installedProviders: [.qianwen])
+        XCTAssertEqual(config.triggerHotkey2, Hotkey(keys: [.rightControl]))
+        XCTAssertNil(config.qianwenVoiceHotkey)
+    }
+
+    func testProviderPrefixedVoiceHotkeyNamesLoadWithoutWarnings() throws {
+        var warnings: [String] = []
+        let config = try RimeDouConfig.load(from: Data(#"{"doubao_VoiceHotkey":"RightOption","qianwen_VoiceHotkey":"LeftShift+LeftControl"}"#.utf8), onWarning: { warnings.append($0) })
+        XCTAssertEqual(config.voiceHotkey, Hotkey(keys: [.rightOption]))
+        XCTAssertEqual(config.qianwenVoiceHotkey, Hotkey(keys: [.leftShift, .leftControl]))
+        XCTAssertTrue(warnings.isEmpty)
+    }
+
+    func testEncodingUsesOnlyProviderPrefixedVoiceHotkeyNames() throws {
+        var config = RimeDouConfig.default
+        config.voiceHotkey = Hotkey(keys: [.rightOption])
+        config.qianwenVoiceHotkey = Hotkey(keys: [.leftShift, .leftControl])
+        let data = try JSONEncoder().encode(config)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["doubao_VoiceHotkey"] as? String, "RightOption")
+        XCTAssertEqual(object["qianwen_VoiceHotkey"] as? String, "LeftShift+LeftControl")
+        XCTAssertNil(object["voiceHotkey"])
+        XCTAssertNil(object["qianwenVoiceHotkey"])
+        XCTAssertEqual(try RimeDouConfig.load(from: data), config)
+    }
+
+    func testLegacyVoiceHotkeyNamesRemainReadable() throws {
+        var warnings: [String] = []
+        let config = try RimeDouConfig.load(from: Data(#"{"voiceHotkey":"RightOption","qianwenVoiceHotkey":"LeftShift+LeftControl"}"#.utf8), onWarning: { warnings.append($0) })
+        XCTAssertEqual(config.voiceHotkey, Hotkey(keys: [.rightOption]))
+        XCTAssertEqual(config.qianwenVoiceHotkey, Hotkey(keys: [.leftShift, .leftControl]))
+        XCTAssertTrue(warnings.isEmpty)
+    }
+
+    func testProviderPrefixedNamesTakePrecedenceOverLegacyNames() throws {
+        var warnings: [String] = []
+        let config = try RimeDouConfig.load(from: Data(#"{"doubao_VoiceHotkey":"RightControl","voiceHotkey":"RightCommand","qianwen_VoiceHotkey":"LeftShift+LeftOption","qianwenVoiceHotkey":"RightControl"}"#.utf8), onWarning: { warnings.append($0) })
+        XCTAssertEqual(config.voiceHotkey, Hotkey(keys: [.rightControl]))
+        XCTAssertEqual(config.qianwenVoiceHotkey, Hotkey(keys: [.leftShift, .leftOption]))
+        XCTAssertTrue(warnings.isEmpty)
+    }
+
+    func testInvalidOrNullNewNamesNeverReactivateLegacyVoiceHotkeys() throws {
+        for value: Any in ["NotAKey", NSNull()] {
+            let data = try JSONSerialization.data(withJSONObject: ["doubao_VoiceHotkey": value, "voiceHotkey": "RightOption", "qianwen_VoiceHotkey": value, "qianwenVoiceHotkey": "LeftShift"])
+            let config = try RimeDouConfig.load(from: data)
+            XCTAssertEqual(config.voiceHotkey, RimeDouConfig.default.voiceHotkey)
+            XCTAssertNil(config.qianwenVoiceHotkey)
+        }
+    }
+
     func testDefaultConfig() {
         let config = RimeDouConfig.default
         XCTAssertEqual(
@@ -263,7 +366,7 @@ final class ConfigTests: XCTestCase {
 
         XCTAssertEqual(config.voiceHotkey, RimeDouConfig.default.voiceHotkey)
         XCTAssertEqual(warnings.count, 1)
-        XCTAssertTrue(warnings[0].contains("voiceHotkey"), "warning was: \(warnings)")
+        XCTAssertTrue(warnings[0].contains("doubao_VoiceHotkey"), "warning was: \(warnings)")
     }
 
     func testInvalidNumericValueEmitsWarning() throws {

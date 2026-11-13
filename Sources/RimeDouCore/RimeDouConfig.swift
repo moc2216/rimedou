@@ -123,6 +123,9 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
     /// so a missing source device just leaves it dormant — never an error.
     public var triggerHotkey2: Hotkey?
     public var voiceHotkey: Hotkey
+    public var qianwenVoiceHotkey: Hotkey? = nil
+    public var qianwenCompletionTimeout: TimeInterval = 60
+    public var qianwenGoneStabilityDelay: TimeInterval = 0.15
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case restoreDelay
@@ -134,7 +137,10 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
         case tapDuration
         case triggerHotkey
         case triggerHotkey2
-        case voiceHotkey
+        case voiceHotkey = "doubao_VoiceHotkey"
+        case qianwenVoiceHotkey = "qianwen_VoiceHotkey"
+        case qianwenCompletionTimeout
+        case qianwenGoneStabilityDelay
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -149,6 +155,9 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
         try container.encode(triggerHotkey.stringRepresentation, forKey: .triggerHotkey)
         try container.encodeIfPresent(triggerHotkey2?.stringRepresentation, forKey: .triggerHotkey2)
         try container.encode(voiceHotkey.stringRepresentation, forKey: .voiceHotkey)
+        try container.encodeIfPresent(qianwenVoiceHotkey?.stringRepresentation, forKey: .qianwenVoiceHotkey)
+        try container.encode(qianwenCompletionTimeout, forKey: .qianwenCompletionTimeout)
+        try container.encode(qianwenGoneStabilityDelay, forKey: .qianwenGoneStabilityDelay)
     }
 
     public static let `default` = RimeDouConfig(
@@ -168,17 +177,20 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
     /// instead of failing silently, so a typo in the JSON shows up in the log.
     public static func load(
         from data: Data,
+        installedProviders: Set<VoiceProviderID> = Set(VoiceProviderID.allCases),
         onWarning: ((String) -> Void)? = nil
     ) throws -> RimeDouConfig {
         let decoder = JSONDecoder()
         let partial = try decoder.decode(PartialRimeDouConfig.self, from: data)
-        if let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
-            let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+        let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        if let object {
+            let knownKeys = Set(CodingKeys.allCases.map(\.stringValue)).union(["voiceHotkey", "qianwenVoiceHotkey"])
             for key in object.keys.sorted() where !knownKeys.contains(key) {
                 onWarning?("unknown config key \"\(key)\" ignored")
             }
         }
         var config = RimeDouConfig.default
+        let doubaoInstalled = installedProviders.contains(.doubao)
         applyTiming(&config.restoreDelay, partial.restoreDelay, name: "restoreDelay", isValid: validDelay, onWarning: onWarning)
         applyTiming(&config.switchPollInterval, partial.switchPollInterval, name: "switchPollInterval", isValid: validDuration, onWarning: onWarning)
         applyTiming(&config.switchWaitTimeout, partial.switchWaitTimeout, name: "switchWaitTimeout", isValid: validDuration, onWarning: onWarning)
@@ -197,15 +209,17 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
                 onWarning?("unparseable triggerHotkey \"\(value)\"; keeping default \"\(RimeDouConfig.default.triggerHotkey.stringRepresentation)\"")
             }
         }
-        if let value = partial.voiceHotkey {
+        // Presence, rather than ??, makes an explicit new null override a legacy value.
+        let doubaoHotkey = object?[CodingKeys.voiceHotkey.rawValue] != nil ? partial.doubao_VoiceHotkey : partial.voiceHotkey
+        if let value = doubaoHotkey {
             if let hotkey = Hotkey.parse(value) {
                 config.voiceHotkey = hotkey
             } else {
-                onWarning?("unparseable voiceHotkey \"\(value)\"; keeping default \"\(RimeDouConfig.default.voiceHotkey.stringRepresentation)\"")
+                onWarning?("unparseable doubao_VoiceHotkey \"\(value)\"; keeping default \"\(RimeDouConfig.default.voiceHotkey.stringRepresentation)\"")
             }
         }
         // Reject a trigger the voice hotkey's own synthesized events could re-arm.
-        if let warning = selfTriggerWarning(for: config.triggerHotkey, voice: config.voiceHotkey) {
+        if doubaoInstalled, let warning = selfTriggerWarning(for: config.triggerHotkey, voice: config.voiceHotkey) {
             onWarning?("\(warning); resetting both to defaults")
             config.triggerHotkey = RimeDouConfig.default.triggerHotkey
             config.voiceHotkey = RimeDouConfig.default.voiceHotkey
@@ -216,9 +230,28 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
             config.triggerHotkey2 = resolveSecondaryTrigger(
                 value,
                 primary: config.triggerHotkey,
-                voice: config.voiceHotkey,
+                voice: doubaoInstalled ? config.voiceHotkey : nil,
                 onWarning: onWarning
             )
+        }
+        applyTiming(&config.qianwenCompletionTimeout, partial.qianwenCompletionTimeout,
+                    name: "qianwenCompletionTimeout", isValid: { (1...300).contains($0) }, onWarning: onWarning)
+        applyTiming(&config.qianwenGoneStabilityDelay, partial.qianwenGoneStabilityDelay,
+                    name: "qianwenGoneStabilityDelay", isValid: { (0.1...1).contains($0) }, onWarning: onWarning)
+        let qianwenHotkey = object?[CodingKeys.qianwenVoiceHotkey.rawValue] != nil ? partial.qianwen_VoiceHotkey : partial.qianwenVoiceHotkey
+        if let value = qianwenHotkey {
+            let triggers = [config.triggerHotkey] + (config.triggerHotkey2.map { [$0] } ?? [])
+            // A transport may share modifiers with a typing/mouse combination:
+            // it cannot re-arm that trigger without synthesizing its normal key.
+            // Between vendor transports, retain the stricter prefix collision rule.
+            if let hotkey = Hotkey.parse(value), validTransportHotkey(hotkey),
+               (!installedProviders.contains(.qianwen) ||
+                ((!doubaoInstalled || !activationCollision(hotkey, config.voiceHotkey)) &&
+                 !triggers.contains(where: { selfTriggerWarning(for: $0, voice: hotkey) != nil }))) {
+                config.qianwenVoiceHotkey = hotkey
+            } else {
+                onWarning?("invalid or conflicting qianwen_VoiceHotkey; Qianwen will stay disabled")
+            }
         }
         return config
     }
@@ -238,13 +271,24 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
             voiceSynthesizedKeyCodes = Set(voice.keys.filter { !$0.isModifier }.flatMap(\.keyCodes))
         }
         guard !triggerArmingKeyCodes.isDisjoint(with: voiceSynthesizedKeyCodes) else { return nil }
-        return "triggerHotkey \"\(trigger.stringRepresentation)\" can be re-armed by the synthesized voiceHotkey \"\(voice.stringRepresentation)\""
+        return "triggerHotkey \"\(trigger.stringRepresentation)\" can be re-armed by the synthesized voice shortcut \"\(voice.stringRepresentation)\""
+    }
+
+    /// A modifier transport can activate while another transport is being assembled.
+    /// Generic modifier names overlap either side; combinations with the same normal
+    /// key are conservatively rejected because vendor modifier matching may vary.
+    static func activationCollision(_ first: Hotkey, _ second: Hotkey) -> Bool {
+        if first.isModifierOnly || second.isModifierOnly {
+            return !Set(first.keys.flatMap(\.keyCodes)).isDisjoint(with: second.keys.flatMap(\.keyCodes))
+        }
+        return !Set(first.keys.filter { !$0.isModifier }.flatMap(\.keyCodes))
+            .isDisjoint(with: second.keys.filter { !$0.isModifier }.flatMap(\.keyCodes))
     }
 
     private static func resolveSecondaryTrigger(
         _ value: String,
         primary: Hotkey,
-        voice: Hotkey,
+        voice: Hotkey?,
         onWarning: ((String) -> Void)?
     ) -> Hotkey? {
         guard let hotkey = Hotkey.parse(value) else {
@@ -259,7 +303,7 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
             onWarning?("triggerHotkey2 \"\(value)\" is identical to triggerHotkey; ignoring it")
             return nil
         }
-        if let warning = selfTriggerWarning(for: hotkey, voice: voice) {
+        if let voice, let warning = selfTriggerWarning(for: hotkey, voice: voice) {
             onWarning?("\(warning) on triggerHotkey2; ignoring triggerHotkey2")
             return nil
         }
@@ -299,6 +343,13 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
         return hotkey.keys.filter { !$0.isModifier }.count == 1
     }
 
+    private static func validTransportHotkey(_ hotkey: Hotkey) -> Bool {
+        // Qianwen's settings support only one or two modifier keys.
+        guard (1...2).contains(hotkey.keys.count), hotkey.isModifierOnly else { return false }
+        let codes = hotkey.keys.flatMap(\.keyCodes)
+        return Set(codes).count == codes.count
+    }
+
     public static var defaultUserConfigURL: URL {
         let applicationSupportURL = (try? FileManager.default.url(
             for: .applicationSupportDirectory,
@@ -313,6 +364,7 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
     }
 
     public static func loadFromDefaultLocation(
+        installedProviders: Set<VoiceProviderID> = Set(VoiceProviderID.allCases),
         onWarning: ((String) -> Void)? = nil
     ) -> RimeDouConfig {
         let url = defaultUserConfigURL
@@ -331,7 +383,7 @@ public struct RimeDouConfig: Equatable, Sendable, Encodable {
             return .default
         }
         do {
-            return try load(from: data, onWarning: onWarning)
+            return try load(from: data, installedProviders: installedProviders, onWarning: onWarning)
         } catch {
             onWarning?("failed to parse config: \(error.localizedDescription); using defaults")
             return .default
@@ -349,5 +401,11 @@ private struct PartialRimeDouConfig: Decodable {
     var tapDuration: TimeInterval?
     var triggerHotkey: String?
     var triggerHotkey2: String?
+    var doubao_VoiceHotkey: String?
+    var qianwen_VoiceHotkey: String?
+    // Older v2/v3 config files remain readable; encoding always uses provider names.
     var voiceHotkey: String?
+    var qianwenVoiceHotkey: String?
+    var qianwenCompletionTimeout: TimeInterval?
+    var qianwenGoneStabilityDelay: TimeInterval?
 }

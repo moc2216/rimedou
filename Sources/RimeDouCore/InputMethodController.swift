@@ -3,6 +3,12 @@ import ApplicationServices
 import Carbon
 import Foundation
 
+public struct InputSourceIdentity: Equatable, Sendable {
+    public let identifier: String
+    public let localizedName: String
+    public let bundleIdentifier: String?
+}
+
 public struct StartupInputMethodWarmupPlan: Equatable, Sendable {
     public static let doubaoInputSourceIdentifier = "com.bytedance.inputmethod.doubaoime.pinyin"
 
@@ -21,192 +27,135 @@ public struct StartupInputMethodWarmupPlan: Equatable, Sendable {
 }
 
 @MainActor
-public final class InputMethodController {
+public protocol InputSourceControlling: AnyObject {
+    func currentInputSourceIdentity() -> InputSourceIdentity?
+    func hasInputSource(identifier: String) -> Bool
+    @discardableResult func selectInputSource(identifier: String) -> Bool
+    func cancelPendingOperations()
+    func restoreInputSource(identifier: String, originalApp: NSRunningApplication?, originalWindow: AXUIElement?,
+                            config: RimeDouConfig, initialDelay: TimeInterval?, completion: @escaping (InputSourceRestoreResult) -> Void)
+}
+
+@MainActor
+public final class InputMethodController: InputSourceControlling {
     private let logger: RimeDouLogger
+    private var operation: Task<Void, Never>?
 
     public init(logger: RimeDouLogger) {
         self.logger = logger
     }
 
-    public func currentInputMethod() -> String {
-        guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue() else {
-            return "unknown"
-        }
-        return propertyString(source, kTISPropertyLocalizedName)
-            ?? propertyString(source, kTISPropertyInputSourceID)
-            ?? "unknown"
+    public func currentInputSourceIdentity() -> InputSourceIdentity? {
+        guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
+              let identifier = propertyString(source, kTISPropertyInputSourceID) else { return nil }
+        return InputSourceIdentity(identifier: identifier,
+                                   localizedName: propertyString(source, kTISPropertyLocalizedName) ?? identifier,
+                                   bundleIdentifier: propertyString(source, kTISPropertyBundleID))
     }
 
-    public func selectInputMethod(namedOrIdentifiedBy value: String) -> Bool {
-        guard let source = findInputSource(matching: value) else {
-            return false
-        }
+    public func hasInputSource(identifier: String) -> Bool { findInputSource(identifier: identifier) != nil }
+
+    public func selectInputSource(identifier: String) -> Bool {
+        guard let source = findInputSource(identifier: identifier) else { return false }
         return TISSelectInputSource(source) == noErr
     }
 
-    public func warmUpDoubaoInputMethod(
-        config: RimeDouConfig,
-        settleDelay: TimeInterval = 0.8,
-        completion: @escaping (Bool) -> Void
-    ) {
-        let current = currentInputMethod()
-        guard let plan = StartupInputMethodWarmupPlan.make(currentInputMethod: current),
-              let doubao = plan.selectionTargets.first else {
-            logger.log("startup warmup skipped: original input method is unknown")
+    public func cancelPendingOperations() { operation?.cancel(); operation = nil }
+
+    public func warmUpDoubaoInputMethod(config: RimeDouConfig, settleDelay: TimeInterval = 0.8,
+                                        completion: @escaping (Bool) -> Void) {
+        cancelPendingOperations()
+        guard let original = currentInputSourceIdentity()?.identifier,
+              selectInputSource(identifier: VoiceProviderRegistry.doubaoInputSourceIdentifier) else {
             completion(false)
             return
         }
-
-        logger.log("startup warmup: activate doubao (original: \(current))")
-        guard selectInputMethod(namedOrIdentifiedBy: doubao) else {
-            logger.log("startup warmup failed: cannot select doubao")
-            completion(false)
-            return
-        }
-
-        waitUntilInputMethodIsActive(
-            doubao,
-            pollInterval: config.switchPollInterval,
-            timeout: config.switchWaitTimeout
-        ) { [weak self] doubaoIsActive in
+        operation = Task { [weak self] in
             guard let self else { return }
-            guard doubaoIsActive else {
-                self.logger.log("startup warmup failed: doubao did not become active")
-                completion(false)
+            let doubao = VoiceProviderRegistry.doubaoInputSourceIdentifier
+            defer {
+                // Cancelling startup during sleep must not strand the user in Doubao.
+                if Task.isCancelled, original != doubao,
+                   self.currentInputSourceIdentity()?.identifier == doubao {
+                    _ = self.selectInputSource(identifier: original)
+                }
+            }
+            let attempts = max(1, Int(ceil(config.switchWaitTimeout / config.switchPollInterval)))
+            for _ in 0..<attempts {
+                if self.currentInputSourceIdentity()?.identifier == doubao { break }
+                do { try await Task.sleep(for: .seconds(config.switchPollInterval)) } catch { return }
+            }
+            guard !Task.isCancelled else { return }
+            guard self.currentInputSourceIdentity()?.identifier == doubao else { completion(false); return }
+            do { try await Task.sleep(for: .seconds(settleDelay)) } catch { return }
+            // A user-selected ordinary source takes precedence during warm-up too.
+            if let current = self.currentInputSourceIdentity()?.identifier, current != doubao {
+                completion(!VoiceProviderRegistry.isVoiceInputSourceIdentifier(current))
                 return
             }
-
-            self.logger.log("startup warmup: doubao active; waiting for shortcut initialization")
-            DispatchQueue.main.asyncAfter(deadline: .now() + settleDelay) { [weak self] in
-                guard let self else { return }
-                guard plan.selectionTargets.count > 1 else {
-                    self.logger.log("startup warmup completed: doubao was already the original input method")
-                    completion(true)
-                    return
-                }
-
-                let original = plan.selectionTargets[1]
-                guard self.selectInputMethod(namedOrIdentifiedBy: original) else {
-                    self.logger.log("startup warmup failed: cannot restore \(original)")
-                    completion(false)
-                    return
-                }
-                self.waitUntilInputMethodIsActive(
-                    original,
-                    pollInterval: config.switchPollInterval,
-                    timeout: config.switchWaitTimeout
-                ) { [weak self] restored in
-                    self?.logger.log(
-                        restored
-                            ? "startup warmup completed: restored \(original)"
-                            : "startup warmup failed: \(original) did not become active"
-                    )
-                    completion(restored)
-                }
-            }
+            if original == doubao { completion(true); return }
+            let restorer = InputSourceRestorer(current: { self.currentInputSourceIdentity()?.identifier },
+                                              select: { self.selectInputSource(identifier: $0) }, settleFocus: {})
+            let result = await restorer.restore(target: original, config: config, initialDelay: 0)
+            guard !Task.isCancelled else { return }
+            if case .safe = result { completion(true) } else { completion(false) }
         }
     }
 
-    public func restoreInputMethod(
-        _ target: String,
-        originalApp: NSRunningApplication?,
-        originalWindow: AXUIElement?,
-        config: RimeDouConfig,
-        completion: @escaping () -> Void
-    ) {
-        let maxAttempts = max(1, Int(ceil(config.switchWaitTimeout / config.switchPollInterval)))
-        let logger = self.logger
-
-        func step(attempt: Int) {
-            let delay = attempt == 0 ? config.restoreDelay : config.switchPollInterval
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                let current = self.currentInputMethod()
-                if InputMethodController.inputMethod(current, matches: target) {
-                    logger.log("restore: at \(target) (attempt \(attempt + 1)/\(maxAttempts), done)")
-                    completion()
-                    return
+    public func restoreInputSource(identifier target: String, originalApp: NSRunningApplication?,
+                                   originalWindow: AXUIElement?, config: RimeDouConfig,
+                                   initialDelay: TimeInterval? = nil,
+                                   completion: @escaping (InputSourceRestoreResult) -> Void) {
+        cancelPendingOperations()
+        let startedAt = CFAbsoluteTimeGetCurrent()
+        logger.log("input source restore started: \(target)")
+        operation = Task { [weak self] in
+            guard let self else { return }
+            let restorer = InputSourceRestorer(
+                current: { self.currentInputSourceIdentity()?.identifier },
+                select: { self.selectInputSource(identifier: $0) },
+                settleFocus: {
+                    await self.settleOriginalFocus(app: originalApp, window: originalWindow, config: config)
                 }
-                let ok = self.selectInputMethod(namedOrIdentifiedBy: target)
-                self.restoreOriginalFocus(originalApp: originalApp, originalWindow: originalWindow, config: config)
-                logger.log("restore: select \(target) ok=\(ok) (was \(current), attempt \(attempt + 1)/\(maxAttempts))")
-                if attempt + 1 < maxAttempts {
-                    step(attempt: attempt + 1)
-                } else {
-                    completion()
-                }
-            }
-        }
-        step(attempt: 0)
-    }
-
-    private func restoreOriginalFocus(
-        originalApp: NSRunningApplication?,
-        originalWindow: AXUIElement?,
-        config: RimeDouConfig
-    ) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + config.focusBounceBackDelay) { [weak self] in
-            originalApp?.activate(options: [])
-            DispatchQueue.main.asyncAfter(deadline: .now() + config.focusBounceSettleDelay) { [weak self] in
-                guard let self else { return }
-                if let window = originalWindow {
-                    let mainResult = AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
-                    let focusedResult = AXUIElementSetAttributeValue(window, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-                    if mainResult != .success {
-                        self.logger.log("restoreOriginalFocus: set main attribute failed with \(mainResult)")
-                    }
-                    if focusedResult != .success {
-                        self.logger.log("restoreOriginalFocus: set focused attribute failed with \(focusedResult)")
-                    }
-                }
-            }
-        }
-    }
-
-    private func findInputSource(matching value: String) -> TISInputSource? {
-        guard let unmanaged = TISCreateInputSourceList(nil, true) else { return nil }
-        guard let sources = unmanaged.takeRetainedValue() as? [TISInputSource] else { return nil }
-        // Exact matches (name or identifier) win over substring matches, so a short
-        // target like "Squirrel" cannot resolve to a sibling source first.
-        var fuzzyMatch: TISInputSource?
-        for source in sources {
-            let name = propertyString(source, kTISPropertyLocalizedName)
-            let identifier = propertyString(source, kTISPropertyInputSourceID)
-            if name == value || identifier == value {
-                return source
-            }
-            if fuzzyMatch == nil,
-               name?.localizedCaseInsensitiveContains(value) == true ||
-               identifier?.localizedCaseInsensitiveContains(value) == true {
-                fuzzyMatch = source
-            }
-        }
-        return fuzzyMatch
-    }
-
-    private func waitUntilInputMethodIsActive(
-        _ target: String,
-        pollInterval: TimeInterval,
-        timeout: TimeInterval,
-        completion: @escaping (Bool) -> Void
-    ) {
-        let maxAttempts = max(1, Int(ceil(timeout / pollInterval)))
-
-        func step(attempt: Int) {
-            let current = self.currentInputMethod()
-            if InputMethodController.inputMethod(current, matches: target) {
-                completion(true)
+            )
+            let result = await restorer.restore(target: target, config: config, initialDelay: initialDelay ?? config.restoreDelay)
+            // A restore task once vanished silently (2026-09-12); lifecycle logs make
+            // the next occurrence attributable. Elapsed time only, no content.
+            let elapsed = Int((CFAbsoluteTimeGetCurrent() - startedAt) * 1000)
+            guard !Task.isCancelled else {
+                self.logger.log("input source restore cancelled after \(elapsed)ms")
                 return
             }
-            guard attempt + 1 < maxAttempts else {
-                completion(false)
-                return
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + pollInterval) {
-                step(attempt: attempt + 1)
-            }
+            self.logger.log("input source restore result: \(result) in \(elapsed)ms")
+            completion(result)
         }
+    }
 
-        step(attempt: 0)
+    private func settleOriginalFocus(app: NSRunningApplication?, window: AXUIElement?, config: RimeDouConfig) async {
+        do { try await Task.sleep(for: .seconds(config.focusBounceBackDelay)) } catch { return }
+        // Check at the moment of each effect, not before a delayed callback.
+        guard Self.focusStillMatches(app: app, window: window), !Task.isCancelled else { return }
+        app?.activate(options: [])
+        do { try await Task.sleep(for: .seconds(config.focusBounceSettleDelay)) } catch { return }
+        guard Self.focusStillMatches(app: app, window: window), !Task.isCancelled else { return }
+        if let window {
+            AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
+            AXUIElementSetAttributeValue(window, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        }
+    }
+
+    public static func focusStillMatches(app: NSRunningApplication?, window: AXUIElement?) -> Bool {
+        guard let app, NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else { return false }
+        guard let window else { return false }
+        guard let focused = focusedWindow(for: app) else { return false }
+        return CFEqual(window, focused)
+    }
+
+    private func findInputSource(identifier: String) -> TISInputSource? {
+        let filter = [kTISPropertyInputSourceID as String: identifier] as CFDictionary
+        guard let unmanaged = TISCreateInputSourceList(filter, false),
+              let sources = unmanaged.takeRetainedValue() as? [TISInputSource] else { return nil }
+        return sources.first { propertyString($0, kTISPropertyInputSourceID) == identifier }
     }
 
     private func propertyString(_ source: TISInputSource, _ key: CFString) -> String? {
@@ -225,6 +174,30 @@ public final class InputMethodController {
         return current.caseInsensitiveCompare(target) == .orderedSame ||
             current.localizedCaseInsensitiveContains(target) ||
             target.localizedCaseInsensitiveContains(current)
+    }
+
+    public static func focusedElement(for app: NSRunningApplication?) -> AXUIElement? {
+        focusedElementCapture(for: app).element
+    }
+
+    /// `axError` is a diagnostic code only; it never carries content.
+    public static func focusedElementCapture(for app: NSRunningApplication?) -> (element: AXUIElement?, axError: AXError?) {
+        guard let pid = app?.processIdentifier else { return (nil, nil) }
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(AXUIElementCreateApplication(pid), kAXFocusedUIElementAttribute as CFString, &value)
+        guard result == .success, let value else { return (nil, result == .success ? nil : result) }
+        guard CFGetTypeID(value) == AXUIElementGetTypeID() else { return (nil, nil) }
+        return ((value as! AXUIElement), nil)
+    }
+
+    /// Replay-destination policy for the focused text field. Some apps answer
+    /// AXFocusedUIElement with kAXErrorNoValue while AXFocusedWindow works
+    /// (live probe 2026-09-12), so an uncaptured field falls back to the captured
+    /// window identity instead of becoming an unsatisfiable replay wait.
+    public nonisolated static func elementIdentityMatches(_ captured: AXUIElement?, fetchCurrent: () -> AXUIElement?) -> Bool {
+        guard let captured else { return true }
+        guard let current = fetchCurrent() else { return false }
+        return CFEqual(captured, current)
     }
 
     public static func focusedWindow(for app: NSRunningApplication?) -> AXUIElement? {

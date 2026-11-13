@@ -1,0 +1,20 @@
+name: macOS checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test-and-build:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run regression tests
+        run: swift test
+      - name: Build release
+        run: swift build -c release
+      - name: Check app bundle inputs
+        run: |
+          bash -n scripts/build-app.sh
+          plutil -lint support/Info.plist

@@ -1,105 +1,83 @@
-# rimedou
+# RimeDou
 
-macOS 菜单栏工具：**通过可配置快捷键启动豆包输入法的语音输入，说完自动切回主输入法（RIME / 鼠须管）**。
+macOS 菜单栏工具。日常使用 RIME / 鼠须管打字，通过右 Command 或鼠标侧键调用豆包、千问输入法的语音能力，结束后恢复原输入法。
 
-专为「打字用 RIME、语音用豆包」的双输入法工作流设计。利用豆包输入法 0.9.3 的「全局唤起语音」，无需手动切换输入法。默认**点按右 Command 键**触发（严格区分左右，左 Command 与 ⌘ 组合键使用不受影响）；想用鼠标侧键触发的用户可配置**第二触发键**组合键，见下方「第二触发键（鼠标侧键方案）」。
+当前版本为 **v3.0.0（323）**。支持豆包、千问两个语音来源，提供第二次点按停止、千问Esc取消及异常恢复。172项自动测试通过，本机键盘与侧键使用结果见[验证记录](docs/validation.md)。预编译应用面向Apple Silicon（arm64），版本变化见[更新记录](CHANGELOG.md)。
 
-启动时会短暂激活一次豆包输入法并切回原输入法，让冷启动后的豆包语音快捷键完成初始化。语音结束后的输入法恢复期间，键盘事件会被短暂保存，并在 RIME 恢复后按原顺序补发，避免第一个字符落入豆包输入法。
+## 安装与启用
 
-## 用法
+1. 使用 macOS 15 或更新版本，安装豆包或千问输入法，并在系统输入法列表启用。可只启用其中一家。
+2. 将 `rimedou.app` 放入“应用程序”并打开。首次使用按权限窗口提示授予“辅助功能”和“输入监控”权限。
+3. 在语音输入法自身设置中启用全局语音快捷键。使用千问时还需启用短按唤起。
+4. 从 RimeDou 菜单打开配置，填写与输入法自身一致的语音键，保存并点击“重新加载配置”。
+5. 切回 RIME 或日常输入法，在 RimeDou 菜单选择“豆包”或“千问”，再点按右 Command 开始语音。
 
-| 操作 | 结果 |
-|---|---|
-| 点按右 Command（或已配置的鼠标侧键） | 豆包语音弹窗出现，开始识别 |
-| 说完后再点按同一快捷键 | 文字上屏，输入法自动切回 RIME |
-| 说完后按空格 / 任意键 | 文字上屏，自动切回 RIME（豆包原生「任意键停止」，工具也会还原） |
+更新安装时，先备份原应用和配置并退出旧 RimeDou。签名变化后可按权限窗口提示重新授权。
 
-> 点按 = 快捷键从按下到松开的时长 ≤ `tapMaxDuration`（默认 0.35s），且中间没按其他键。右 Command 与其他键的组合使用（如 ⌘+C）不会触发。
+## 日常操作
 
-## 前置条件
-
-- macOS 15.0+
-- Swift 6.0 工具链（Xcode 或 Command Line Tools）
-- 豆包输入法 0.9.3 及以上
-- 豆包设置里：打开「全局唤起语音」开关，全局热键设为**右 Control**
-- 主输入法为 Squirrel（鼠须管 / RIME）
-- 首次使用授予：辅助功能、输入监控
-
-## 构建
-
-```bash
-git clone https://github.com/moc2216/rimedou.git
-cd rimedou
-swift build
-./scripts/build-app.sh
-open build/rimedou.app
-```
-
-- `swift build` 编译可执行文件与 `RimeDouCore` 库。
-- `./scripts/build-app.sh` 生成 `build/rimedou.app` 并完成代码签名；默认使用本地可用的签名身份，未找到则 ad-hoc 签名（`-`）。可用 `CODE_SIGN_IDENTITY="证书名"` 指定稳定签名身份。
-
-## 配置
-
-用户配置位于 `~/Library/Application Support/rimedou/config.json`，首次启动会自动生成。常用项：
-
-| 字段 | 默认 | 说明 |
+| 操作 | 豆包 | 千问 |
 |---|---|---|
-| `triggerHotkey` | `RightCommand` | 主触发键，支持单键或“修饰键 + 一个普通键”组合 |
-| `triggerHotkey2` | （不设置） | 可选第二触发键，与主触发键并存、任一可触发；见下方「第二触发键」 |
-| `voiceHotkey` | `RightControl` | 发给豆包的全局语音热键，需与豆包设置一致 |
-| `tapMaxDuration` | `0.35` | 点按最长时长（秒），超过算修饰键使用 |
-| `tapDuration` | `0.15` | 合成语音键的点按时长 |
-| `restoreDelay` | `0.5` | 停止后多久开始切回主输入法 |
-| `switchPollInterval` | `0.05` | 切回主输入法时的轮询间隔 |
-| `switchWaitTimeout` | `2.0` | 切回主输入法的最长等待时间 |
-| `focusBounceBackDelay` | `0.1` | 焦点回弹等待 |
-| `focusBounceSettleDelay` | `0.1` | 焦点稳定等待 |
+| 点按右 Command 或第二触发键 | 开始语音 | 开始语音 |
+| 再次点按同一入口 | 请求停止，等待本次语音窗口完成后恢复 | 请求停止，等待本次语音窗口完成后恢复 |
+| 录音时输入普通键 | 结束语音，恢复后补发结束键 | 继续录音 |
+| 录音时按单独 Esc | 按豆包自身行为处理 | 取消语音，窗口关闭后恢复日常输入法 |
+| 等待识别及恢复时打字 | 暂存在内存，恢复后按顺序补发 | 暂存在内存，恢复后按顺序补发 |
 
-改完后在菜单栏图标点 `Reload Config` 即时生效（或重启）。无法解析或不合法的字段会自动回退默认值，并在日志中记录一条警告（例如写成只有修饰键的组合时，日志会提示 `invalid triggerHotkey`），方便排查误配。
+两个入口都使用菜单中选定的语音来源。语音进行中、等待识别或恢复期间，来源切换和配置重载暂不可用。
 
-## 第二触发键（鼠标侧键方案）
+## 配置示例
 
-想让**鼠标侧键**也能触发语音时，配置可选的第二触发键。在 `config.json` 加入下面这行（复制粘贴后 `Reload Config` 生效）：
+配置文件位于 `~/Library/Application Support/rimedou/config.json`。以下示例使用右 Command 作为键盘入口，将鼠标入口设为左 Shift＋左 Option＋Z。
 
 ```json
-"triggerHotkey2": "LeftControl+LeftOption+LeftCommand+Z"
+{
+  "triggerHotkey": "RightCommand",
+  "triggerHotkey2": "LeftShift+LeftOption+Z",
+  "doubao_VoiceHotkey": "RightControl",
+  "qianwen_VoiceHotkey": "LeftShift+LeftControl"
+}
 ```
 
-再到鼠标工具里把侧键映射为该组合键。以 Logitech MX Master 3S 的 Button 6 + Mac Mouse Fix 为例：MMF → Buttons → Button 6 → 添加「Keyboard Shortcut」→ 录制 **⌃⌥⌘Z**。
+示例中的豆包语音键为右 Control，千问语音键为左 Shift＋左 Control。请同时将输入法自身设置为对应组合。千问语音键由用户填写，首次生成配置时为空。
 
-几点说明：
+字段说明、英文按键名称、单输入法配置和可放入 JSON 的参考区见[配置说明](docs/configuration.md)。旧字段 `voiceHotkey`、`qianwenVoiceHotkey` 仍可读取，新名称优先。
 
-- **为什么用组合键而不是右 Command 单键**：Mac Mouse Fix 的键盘快捷键不支持录制单独修饰键（官方 [issue #1679](https://github.com/noah-nuebling/mac-mouse-fix/issues/1679)，截至 3.0.8 仍为 open 的功能请求），侧键只能发组合键。
-- **为什么普通键选 Z**：组合键的普通键在语音中单独按下时不算“结束信号”，选一个输入中几乎不用的键（五笔 Z 为万能学习键、英文 Z 频率最低）可避免误触；可换成任意其他普通键。
-- **与设备无关**：第二触发键只是“监听 ⌃⌥⌘Z 这个键盘模式”，换用没有侧键的鼠标时它会自然休眠（不触发、不报错），右 Command 主触发不受影响。
-- 第二触发键配置错误（无效组合、与主触发键相同、与语音键自触发冲突）只会在日志告警并忽略该键，主触发键和语音键不受影响。
-- 组合键必须包含一个普通键；只有修饰键的组合无效。触发键（含主键）不能与 `voiceHotkey`（右 Control）产生自我触发冲突，此类配置会告警并回退。
+## 鼠标侧键
 
-**已知小边界**：语音进行中若恰好**单独按下**组合键里的普通键（如裸 Z）来结束语音，rimedou 会等下一个按键才恢复输入法（该字符可能落入豆包）。用空格、回车或其他键结束则无此问题。
+在 Mac Mouse Fix 等鼠标工具中，将侧键映射为与 `triggerHotkey2` 完全一致的键盘组合。例如上面的配置对应 `⇧⌥Z`，请使用组合键点按映射。
 
-## 运行机制
+RimeDou 通过系统键盘事件接收侧键映射。主触发键和第二触发键都支持开始、再次点按结束。鼠标型号及映射软件的适配范围见[验证记录](docs/validation.md)。
 
-1. 启动时短暂切到豆包再切回，完成豆包语音快捷键初始化
-2. 点按任一触发键（右 Command / 第二触发键 ⌃⌥⌘Z / 映射了该组合键的鼠标侧键）→ rimedou 合成右 Control → 豆包全局唤起，自切到豆包 + 开语音
-3. 用户说话（实时上屏）
-4. 停止信号（再点快捷键 / 任意键）→ 豆包停止 + 上屏
-5. rimedou 暂存恢复期间的键盘事件，确认切回 RIME 后再补发
+## 故障恢复
 
-结束语音的实体按键本身已经会通知豆包停止，因此 rimedou 不会在普通结束流程中再次发送右 Control，避免语音弹窗被意外重新唤醒。
+- 菜单栏显示 `豆!` 或 `千!` 时，打开菜单查看具体原因，确认语音已结束并切回 RIME 或日常输入法。
+- 暂存补发受阻时，RimeDou 会自动暂停快捷键，让日常打字恢复。回到原输入窗口后，可从菜单重新启用并继续补发。
+- 需要放弃未补发按键时，确认语音已结束并关闭厂商窗口后，选择“确认语音已结束，丢弃暂存并恢复快捷键”。工具会核对当前状态，必要时主动恢复日常输入法，完成后重新启用快捷键。恢复受阻时会弹窗说明原因，暂存保留。
+- 无法唤起时，先直接测试输入法配置的原生语音键，再核对 RimeDou 配置、菜单来源和日志。
 
-键盘事件在会话层监听，因此既能识别实体键盘，也能识别 Mac Mouse Fix 等工具生成的模拟快捷键。事件 tap 被系统超时禁用时会自动重新启用，避免「按了没反应」。
+补发会检查输入源及原 App、窗口的状态。暂存上限为 2048 个键盘事件，达到上限会提示停止输入并处理。退出前可按菜单提示完成恢复，或明确选择“确认语音已结束，丢弃暂存并退出”。
 
-## 目录
+## 从源码构建
 
-- `Sources/rimedou` — 菜单栏可执行入口
-- `Sources/RimeDouCore` — 状态机、配置、键盘事件、输入法控制
-- `Tests/RimeDouCoreTests` — 单元测试
-- `assets/AppIcon.icns` — 应用图标
-- `support/Info.plist` — 应用 bundle 信息
-- `scripts/build-app.sh` — 编译打包
+需要支持 Swift 6 的 Xcode 工具链。
 
-默认配置硬编码在 `RimeDouConfig.default`（上表即其取值），首次启动自动写入用户配置文件，无需模板文件。
+```bash
+swift test
+swift build -c release
+./scripts/build-app.sh
+```
 
-## 许可
+打包输出位于 `build/rimedou.app`。脚本可通过 `CODE_SIGN_IDENTITY` 指定签名身份，默认选择本机可用身份，缺少身份时使用 ad-hoc 签名。
 
-MIT License，见 [LICENSE](LICENSE)。
+仓库的 macOS CI 会执行测试、release 构建和应用元数据检查。上传后的 CI 结果需在 GitHub 查看。本地验证结果见[验证记录](docs/validation.md)。
+
+## 开发与隐私
+
+- [文档索引](docs/README.md)包含配置、实现机制和人工验收步骤。
+- `Sources/RimeDouCore` 包含配置、键盘事件、语音会话和输入法恢复，`Sources/rimedou` 包含菜单和权限窗口。
+- 自动测试使用模拟输入法及窗口状态，运行测试无需启动语音。
+- RimeDou 运行时无第三方依赖和网络请求。暂存事件只在内存中用于恢复后补发，日志记录状态及事件数量。
+- 窗口观察只使用窗口 ID、可见性和进程身份。语音识别由选定输入法提供，遵循该输入法自身的数据处理设置。
+
+本项目使用 [MIT License](LICENSE)。
